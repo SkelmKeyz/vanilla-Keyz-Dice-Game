@@ -1,30 +1,68 @@
-# 🎲 Vanilla Keyz Dice Game
+# 🎲 Keyz Dice Game
 
-Second born project — a professional showcase of Vanilla JavaScript skills.  
-A simple dice game built to practice DOM manipulation, event handling, and game logic.
+Keyz Dice Game is a realtime multiplayer betting game designed to combine dice rolling, banking, and betting mechanics.  
+Built with **Express, MongoDB, Socket.IO, and Vanilla JavaScript**.
 
----
-
-## ✨ Features
-- Dice roll with random outcomes
-- Score tracking per player
-- Turn-based gameplay
-- Win condition detection
-- Minimal, responsive UI
+🚀 Live Demo  
+*(Add link here once deployed — e.g., SkelmKeyz.github.io/KeyzDiceGame)*
 
 ---
 
-## 📦 Tech Stack
-- JavaScript (ES6+)
-- HTML5
-- CSS3
-- No frameworks — pure Vanilla JS
+## 📸 Screenshots
+- Roll Screen  
+- Betting Screen  
+- Bank Screen  
+- Game Log Screen  
 
 ---
 
-## 🚀 Getting Started
+## 🧩 Gameplay Flow
 
-### 1. Clone the repo
+Start → Players join a room and are assigned roles (`player1` or `player2`).
+
+Stages:
+- 🎲 Roll Dice → Each player rolls when it’s their turn.  
+- 💰 Betting House → Players place bets (minimum R20).  
+- 🏦 Central Bank → Players can request loans from the loan pool.  
+- 📋 Game Log → Tracks rolls, bets, loans, and outcomes in realtime.  
+- 🏆 Win Condition → Pot distribution and scores determine the winner.  
+
+Realtime Sync → Game state is broadcast via Socket.IO to all connected clients.
+
+---
+
+## 🛠️ Tech Stack
+
+**Backend:**
+- Node.js + Express  
+- MongoDB + Mongoose  
+- JWT Authentication  
+- Socket.IO (server)  
+
+**Frontend:**
+- Vanilla JavaScript (ES6+)  
+- HTML5 + CSS3  
+- Socket.IO (client)  
+
+**Deployment:**
+- Vercel / GitHub Pages (frontend)  
+- Any Node hosting (backend)  
+
+---
+
+## 📊 Features
+- JWT‑based authentication with OTP routes  
+- Realtime dice rolling and betting  
+- Loan pool + central bank mechanics  
+- Player role assignment (`player1` / `player2`)  
+- Game log with turn‑by‑turn updates  
+- Responsive UI with Vanilla JS animations  
+
+---
+
+## 🧪 How to Run Locally
+
 ```bash
 git clone https://github.com/SkelmKeyz/vanilla-Keyz-Dice-Game.git
 cd vanilla-Keyz-Dice-Game
+npm install
