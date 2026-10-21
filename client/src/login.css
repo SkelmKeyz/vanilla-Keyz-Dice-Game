@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+*,
+*::before,
+*::after{
+box-sizing:border-box;
+margin:0;
+padding:0;
+}
+
+body{
+min-height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+font-family:"Inter",sans-serif;
+background:#e7ebf0;
+overflow:hidden;
+}
+
+/* Auth Container */
+#auth-container{
+width:100%;
+max-width:420px;
+position:relative;
+}
+
+/* Login & Signup Panels */
+.form-layout{
+background:#e7ebf0;
+border-radius:35px;
+padding:40px 38px;
+box-shadow: 20px 20px 40px rgba(163,177,198,.65),
+            -20px -20px 40px rgba(255,255,255,.95);
+}
+
+/* Heading */
+.form-section h2{
+text-align:center;
+margin-bottom:24px;
+color:#2d3436;
+font-size:2rem;
+}
+
+/* Labels */
+.form-section label{
+display:block;
+margin-bottom:6px;
+color:#636e72;
+font-size:.85rem;
+font-weight:600;
+}
+
+/* Input Wrapper */
+.form-section div{
+margin-bottom:18px;
+}
+
+/* Inputs */
+.form-section input{
+width:100%;
+border:none;
+outline:none;
+border-radius:16px;
+padding:14px 18px;
+background:#e7ebf0;
+color:#2d3436;
+box-shadow: inset 6px 6px 12px rgba(163,177,198,.45),
+            inset -6px -6px 12px rgba(255,255,255,.9);
+}
+
+/* Button */
+.form-section button{
+width:100%;
+margin-top:12px;
+padding:14px;
+border:none;
+border-radius:18px;
+cursor:pointer;
+font-weight:700;
+background:#e7ebf0;
+
+box-shadow: 8px 8px 16px rgba(163,177,198,.55),
+           -8px -8px 16px rgba(255,255,255,.9);
+
+transition:.2s;
+}
+
+.form-section button:hover{
+transform:translateY(-2px);
+}
+
+.form-section button:active{
+box-shadow:
+inset 6px 6px 12px rgba(163,177,198,.45),
+inset -6px -6px 12px rgba(255,255,255,.9);
+}
+
+/* Toggle Text */
+#instruction{
+text-align:center;
+margin-top:20px;
+cursor:pointer;
+}
+
+#instruction p{
+color:#636e72;
+}
+
+#instruction h5{
+color:#0984e3;
+margin-top:6px;
+}
+
+/* Hidden Signup */
+#signup-panel{
+display:none;
+}

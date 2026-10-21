@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register Page</title>
+    <link rel="stylesheet" href="./src/login.css" />
+</head>
+
+<body>
+
+    <div id="auth-container">
+        <!-- Login Panel -->
+        <div id="login-screen" class="form-layout">
+            <form id="loginForm" class="form-section">
+                <h2>Login</h2>
+                <div>
+                    <label for="email">Email:</label>
+                    <input id="email" name="email" type="email" required />
+                </div>
+                <div>
+                    <label for="password">Password:</label>
+                    <input id="password" name="password" type="password" required />
+                </div>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+
+        <!-- Sign Up Panel -->
+        <div id="signup-panel" class="form-layout">
+            <form id="signupForm" class="form-section">
+                <h2>Sign Up</h2>
+
+                <div>
+                    <label for="signupEmail">Email:</label>
+                    <input id="signupEmail" name="email" type="email" required />
+                </div>
+
+                <div>
+                    <label for="signupPassword">Password:</label>
+                    <input id="signupPassword" name="password" type="password" required />
+                </div>
+
+                <button type="submit">
+                    Sign Up
+                </button>
+
+                <div style="margin-top:20px">
+                    <label for="otp">Verification Code:</label>
+                    <input id="otp" type="text" placeholder="Enter OTP from email" />
+                </div>
+
+                <button type="button" id="verifyOtpBtn" style="margin-top:10px">
+                    Verify OTP
+                </button>
+            </form>
+        </div>
+
+        <div id="instruction">
+            <p>Haven't Signed Up Yet?</p>
+            <h5>Click here to sign up</h5>
+        </div>
+
+        <script type="module" src="./src/authscreen.js"></script>
+        <script type="module" src="./src/js/login.js"></script>
+        <script type="module" src="./src/js/signup.js"></script>
+        <script type="module" src="./src/js/verifyotp.js"></script>
+</body>
+
+</html>
