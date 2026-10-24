@@ -1,20 +1,18 @@
-const bothBet = room.bank.last3Bets.player1.length > 0 &&
-    room.bank.last3Bets.player2.length > 0;
-
-if (!bothBet) {
-    socket.emit("error", " Both players must place a bet before rolling");
-    return;
-}
+const { randomInt } = require("crypto");
 
 function processRoll(room) {
-    console.log("ROLL ALLOWED");
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
+    if (!room || !room.currentTurn) {
+        throw new Error("Invalid room data");
+    }
+
+    const d1 = randomInt(1, 7);
+    const d2 = randomInt(1, 7);
 
     const sum = d1 + d2;
     const roller = room.currentTurn;
 
     let message = null;
+    let nextTurn = null;
     let roundOver = false;
     let winnerRole = null;
 
@@ -31,6 +29,8 @@ function processRoll(room) {
             room.point = sum;
             room.isFirstRoll = false;
             message = `📌 Point set to ${sum}`;
+            nextTurn = roller === "player1" ? "player2" : "player1";
+            room.currentTurn = nextTurn;
         }
     } else {
         if (sum === room.point) {
@@ -41,19 +41,17 @@ function processRoll(room) {
             message = `💀 Seven-out! ${roller} loses!`;
             roundOver = true;
             winnerRole = roller === "player1" ? "player2" : "player1";
+        } else {
+            message = `${roller} rolled ${sum}. Point remains ${room.point}`;
+            nextTurn = roller === "player1" ? "player2" : "player1";
+            room.currentTurn = nextTurn;
         }
-    }
 
-    const nextTurn =
-        roller === "player1"
-            ? "player2"
-            : "player1";
-
-    room.currentTurn = nextTurn;
-
-    if (roundOver) {
-        room.isFirstRoll = true;
-        room.point = null;
+        if (roundOver) {
+            room.isFirstRoll = true;
+            room.point = null;
+            room.currentTurn = winnerRole;
+        }
     }
 
     return {
@@ -61,13 +59,12 @@ function processRoll(room) {
         d2,
         sum,
         roller,
-        nextTurn,
+        nextTurn: roundOver ? null : room.currentTurn,
+        point: room.point,
         message,
         roundOver,
         winnerRole
     };
 }
 
-module.exports = {
-    processRoll
-};
+module.exports = { processRoll };

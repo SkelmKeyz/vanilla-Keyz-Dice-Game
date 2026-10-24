@@ -1,37 +1,45 @@
-const transporter = require("../mailer");
+const { createOTP, verifyOTP } = require("../services/otpService");
+const { sendOTPEmail } = require("../services/emailService");
+const User = require("../models/user");
 
-const otpStore = {};
 // ── Send OTP ──────────────────────────────────────────────────────────────────
 exports.sendOTP = async (req, res) => {
     try {
         const { email } = req.body;
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        otpStore[email] = { otp, expiresAt: Date.now() + 5 * 60 * 1000 };
-        await transporter.sendMail({
-            from: process.env.EMAIL_USER,
-            to: email,
-            subject: "Keyz Dice Game OTP",
-            html: `<h2>🎲 Keyz Dice Game</h2><p>Your code: <h1>${otp}</h1></p><p>Expires in 5 minutes.</p>`
-        });
+
+        if (!email || typeof email !== "string" || !email.includes("@")) {
+            return res.status(400).json({ error: "Valid email is required" });
+        }
+
+        const otp = createOTP(email.toLowerCase().trim());
+        await sendOTPEmail(email.toLowerCase().trim(), otp);
+
         res.json({ success: true });
     } catch (err) {
-        console.error("EMAIL ERROR:", err.message);
-        res.status(500).json({ error: err.message });
+        console.error("OTP send error:", err.message);
+        res.status(500).json({ error: "Failed to send OTP" });
     }
 };
 
 // ── Verify OTP ────────────────────────────────────────────────────────────────
-exports.verifyOTP = (req, res) => {
+exports.verifyOTP = async (req, res) => {
     const { email, otp } = req.body;
-    const stored = otpStore[email];
-    if (!stored) return res.status(400).json({ verified: false, error: "OTP not found" });
-    if (Date.now() > stored.expiresAt) {
-        delete otpStore[email];
-        return res.status(400).json({ verified: false, error: "OTP expired" });
+
+    if (!email || !otp) {
+        return res.status(400).json({ verified: false, error: "Email and OTP are required" });
     }
-    if (stored.otp === otp) {
-        delete otpStore[email];
-        return res.json({ verified: true });
+
+    try {
+        verifyOTP(email.toLowerCase().trim(), otp);
+
+        // Mark account as verified in MongoDB
+        await User.updateOne(
+            { email: email.toLowerCase().trim() },
+            { $set: { isVerified: true } }
+        );
+
+        res.json({ verified: true });
+    } catch (err) {
+        res.status(400).json({ verified: false, error: err.message });
     }
-    return res.status(400).json({ verified: false, error: "Invalid OTP" });
 };

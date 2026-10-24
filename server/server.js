@@ -1,68 +1,87 @@
 require("dns").setDefaultResultOrder("ipv4first");
 require("dotenv").config();
 
-// Core packages
+// Dependencies
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
 const http = require("http");
-const jwt = require("jsonwebtoken");
-
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 const { Server } = require("socket.io");
 
-// Routes
+// Services
 const otpRoutes = require("./routes/otpRoutes");
 const authRoutes = require("./routes/authRoutes");
-
-// Middleware
 const socketAuth = require("./middleware/socketAuth");
-
-// Services
-const { rooms, getRoom, createRoom, deleteRooms } = require("./services/roomManager");
+const { rooms, getRoom, createRoom } = require("./services/roomManager");
 const initializeGameSocket = require("./sockets/gameSocket");
-
-// Utils
 const broadcastGameState = require("./utils/broadcastGameState");
+const connectDB = require("./config/database");
 
-// DataBase
-const connectDB =
-    require("./config/database");
+// ── Env guard — fail fast if critical config is missing ───────────────────────
+if (!process.env.MONGO_URI) {
+    console.error("FATAL: MONGO_URI is missing from .env");
+    process.exit(1);
+}
+if (!process.env.JWT_SECRET) {
+    console.error("FATAL: JWT_SECRET is missing from .env");
+    process.exit(1);
+}
+if (!process.env.CLIENT_URL) {
+    console.error("FATAL: CLIENT_URL is missing from .env");
+    process.exit(1);
+}
 
 const app = express();
 const httpServer = http.createServer(app);
+const PORT = process.env.PORT || 3000;
+
+// ── 1. Security headers (must be first) ──────────────────────────────────────
+app.use(helmet());
+
+// ── 2. CORS ───────────────────────────────────────────────────────────────────
+app.use(cors({
+    origin: process.env.CLIENT_URL,
+    credentials: true
+}));
+
+// ── 3. Body parser ────────────────────────────────────────────────────────────
+app.use(express.json());
+
+// ── 4. Rate limiters (must be before routes) ─────────────────────────────────
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    message: { error: "Too many requests. Please try again in 15 minutes." }
+});
+
+const otpLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: "Too many OTP requests. Please try again in 15 minutes." }
+});
+
+app.use("/api/auth", authLimiter);
+app.use("/api/otp", otpLimiter);
+
+// ── 5. Routes ─────────────────────────────────────────────────────────────────
+app.get("/", (req, res) => res.send("Server is running!"));
+app.use("/api/auth", authRoutes);
+app.use("/api/otp", otpRoutes);
+
+// ── 6. Socket.IO ──────────────────────────────────────────────────────────────
 const io = new Server(httpServer, {
     cors: {
         origin: process.env.CLIENT_URL,
         methods: ["GET", "POST"]
     }
 });
-const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
-
-app.get("/", (req, res) => res.send("Server is running!"));
-
-if (!process.env.MONGO_URI) {
-    console.error("FATAL ERROR: MONGO_URI is missing from your .env file.");
-    process.exit(1);
-}
-
-app.use("/api/auth", authRoutes);
-app.use("/api/otp", otpRoutes);
 io.use(socketAuth);
+initializeGameSocket(io, rooms, createRoom, getRoom, broadcastGameState);
 
-initializeGameSocket(
-    io,
-    rooms,
-    createRoom,
-    getRoom,
-    broadcastGameState
-);
-
-// ── DB + Server Start ─────────────────────────────────────────────────────────
+// ── 7. Connect DB and start server ────────────────────────────────────────────
 connectDB();
 httpServer.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`)
-})
-
+    console.log(`✅ Server running on port ${PORT}`);
+});

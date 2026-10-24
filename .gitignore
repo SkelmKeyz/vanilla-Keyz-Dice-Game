@@ -1,37 +1,25 @@
 # Dependencies
 node_modules/
-client/node_modules/
-server/node_modules/
+*/node_modules/
 
-# Environment Variables
+# Environment variables — NEVER commit these
 .env
-client/.env
-server/.env
+.env.local
+.env.production
+.env.staging
+*/.env
+*/.env.local
 
-# Build Output
+# Build output
 dist/
+build/
 client/dist/
-server/dist/
 
 # Logs
-logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# Coverage
-coverage/
-
-# MongoDB Memory Server
-.cache/
-mongodb-memory-server/
-
-# Vite
-dist-ssr
-*.local
-
-# OS Files
+# OS files
 .DS_Store
 Thumbs.db
 
