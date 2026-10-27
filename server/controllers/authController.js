@@ -72,6 +72,13 @@ exports.login = async (req, res) => {
             return res.status(401).json({ error: "Invalid credentials" });
         }
 
+        // Enforce email verification before allowing gameplay
+        if (!user.isVerified) {
+            return res.status(403).json({
+                error: "Email not verified. Please check your inbox for the OTP."
+            });
+        }
+
         const token = jwt.sign(
             { userId: user._id, email: user.email },
             process.env.JWT_SECRET,

@@ -1,11 +1,19 @@
 const { processRoll } = require("../services/gameService");
-const { applyBankRules, requestLoan } = require("../services/bankService");
+const { applyBankRules } = require("../services/bankService");
 const User = require("../models/user");
+const GameResult = require("../models/gameResult");
+const { assignPlayerToRoom } = require("./socketHandler/roomHandler");
+const { requestLoan: loanHandler } = require("./socketHandler/loanHandler");
 
 const MIN_BET = 20;
 const MAX_BET = 10000;
 const MAX_LOAN = 500;
+
+// Single shared rate-limits map for this process
 const rateLimits = {};
+
+// Single waiting-player slot
+let waitingPlayer = null;
 
 // ── Validation ────────────────────────────────────────────────────────────────
 function isValidRoomId(roomId) {
@@ -37,19 +45,13 @@ function getOtherRole(role) {
 
 // ── Balance helpers ───────────────────────────────────────────────────────────
 function debitBalance(room, role, amount) {
-    if (typeof amount !== "number" || amount <= 0) {
-        throw new Error("Invalid amount");
-    }
-    if (room.bank.balances[role] < amount) {
-        throw new Error("Insufficient balance");
-    }
+    if (typeof amount !== "number" || amount <= 0) throw new Error("Invalid amount");
+    if (room.bank.balances[role] < amount) throw new Error("Insufficient balance");
     room.bank.balances[role] -= amount;
 }
 
 function creditBalance(room, role, amount) {
-    if (typeof amount !== "number" || amount <= 0) {
-        throw new Error("Invalid credit amount");
-    }
+    if (typeof amount !== "number" || amount <= 0) throw new Error("Invalid credit amount");
     room.bank.balances[role] += amount;
 }
 
@@ -76,25 +78,29 @@ function emitRoomState(io, rooms, roomId, broadcastGameState) {
 }
 
 // ── Persist balances to MongoDB after round end ───────────────────────────────
-async function persistBalances(room) {
+async function persistBalances(room, loansOverride) {
     try {
+        const loans = loansOverride || room.bank.loansIssued || { player1: 0, player2: 0 };
+
         const p1Email = room.players.player1?.email;
         const p2Email = room.players.player2?.email;
 
         if (p1Email) {
+            const p1Final = Math.max(0, room.bank.balances.player1 - loans.player1);
             await User.updateOne(
                 { email: p1Email },
-                { $set: { balance: room.bank.balances.player1 } }
+                { $set: { balance: p1Final } }
             );
         }
+
         if (p2Email) {
+            const p2Final = Math.max(0, room.bank.balances.player2 - loans.player2);
             await User.updateOne(
                 { email: p2Email },
-                { $set: { balance: room.bank.balances.player2 } }
+                { $set: { balance: p2Final } }
             );
         }
     } catch (err) {
-        // Non-fatal: game continues, balance just not persisted this round
         console.error("Balance persist failed:", err.message);
     }
 }
@@ -106,247 +112,263 @@ async function loadPlayerBalance(email) {
         return user?.balance ?? 1000;
     } catch (err) {
         console.error("Balance load failed:", err.message);
-        return 1000; // fallback to default
+        return 1000;
     }
+}
+
+// ── Atomically deduct stake from MongoDB before match starts ─────────────────
+async function deductStakeFromDB(email, amount) {
+    const result = await User.findOneAndUpdate(
+        { email, balance: { $gte: amount } },
+        { $inc: { balance: -amount } },
+        { new: true }
+    );
+    if (!result) {
+        throw new Error(`Insufficient funds in DB for ${email}`);
+    }
+    return result.balance;
+}
+
+function findExistingRoomForEmail(email, rooms) {
+    for (const roomId in rooms) {
+        const room = rooms[roomId];
+        if (
+            room.players.player1?.email === email ||
+            room.players.player2?.email === email
+        ) {
+            return { roomId, room };
+        }
+    }
+    return null;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
 module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
     io.on("connection", (socket) => {
-        console.log(`✅ Socket connected [${socket.id}]`);
+        console.log(`✅ Socket connected [${socket.id}] user: ${socket.user?.email}`);
 
-        // ── join-room ─────────────────────────────────────────────────────────
-        socket.on("join-room", async ({ roomId, stake } = {}) => {
-            if (!isValidRoomId(roomId)) {
-                socket.emit("error", "Invalid room ID");
+        const existingRoom = findExistingRoomForEmail(socket.user.email, rooms);
+
+        if (existingRoom) {
+            const room = existingRoom.room;
+
+            // the reconnect assignment block below.
+            const otherRole =
+                room.players.player1.email === socket.user.email ? "player2" : "player1";
+            const otherPlayerSocketId = room.players[otherRole]?.socketId;
+            const isOtherOnline =
+                otherPlayerSocketId && io.sockets.sockets.has(otherPlayerSocketId);
+
+            if (!isOtherOnline) {
+                delete rooms[existingRoom.roomId];
                 return;
             }
 
-            if (socket.currentRoomId && socket.currentRoomId !== roomId) {
-                socket.emit("error", "You are already in another room");
-                return;
+            // Safe to reconnect — update socket ID for the returning player
+            if (room.players.player1.email === socket.user.email) {
+                room.players.player1.socketId = socket.id;
+                socket.playerRole = "player1";
+            } else if (room.players.player2.email === socket.user.email) {
+                room.players.player2.socketId = socket.id;
+                socket.playerRole = "player2";
             }
 
+            socket.playerRoomId = existingRoom.roomId;
+            socket.currentRoomId = existingRoom.roomId;
+            socket.join(existingRoom.roomId);
+
+            console.log(`♻️ Reconnected ${socket.user.email}`);
+
+            socket.emit("player-role", socket.playerRole);
+            broadcastGameState(io, rooms, existingRoom.roomId);
+            return;
+        }
+
+        // ── find-match ────────────────────────────────────────────────────────
+        socket.on("find-match", async ({ stake = 100 } = {}) => {
             const stakeAmount = Number(stake);
-            if (!Number.isFinite(stakeAmount) || stakeAmount < MIN_BET) {
-                socket.emit("error", `Minimum stake is R${MIN_BET}`);
+
+            //  Enforce both MIN and MAX bet server-side.
+            if (!Number.isFinite(stakeAmount) || stakeAmount < MIN_BET || stakeAmount > MAX_BET) {
+                socket.emit("error", `Stake must be between R${MIN_BET} and R${MAX_BET}`);
                 return;
             }
 
+            // Prevent duplicate queue entries for the same email
+            if (
+                waitingPlayer &&
+                waitingPlayer.socket.user.email === socket.user.email
+            ) {
+                socket.emit("error", "Already waiting for a match");
+                return;
+            }
+
+            // First player waits
+            if (!waitingPlayer) {
+                waitingPlayer = { socket, stake: stakeAmount };
+                console.log(`⏳ ${socket.user.email} waiting for opponent`);
+                socket.emit("waiting", { message: "Waiting for opponent..." });
+                return;
+            }
+
+            const p1Socket = waitingPlayer.socket;
+            const p1Stake = waitingPlayer.stake;
+            const p2Socket = socket;
+            const p2Stake = stakeAmount;
+
+            // economy by letting a low-risk player win a high-value pot.
+            if (p1Stake !== p2Stake) {
+                socket.emit(
+                    "error",
+                    `Stake mismatch: opponent is waiting with R${p1Stake}. Please match their stake to join.`
+                );
+                return;
+            }
+
+            // Clear the waiting slot 
+            waitingPlayer = null;
+
+            // Load current balances from MongoDB
+            const p1Balance = await loadPlayerBalance(p1Socket.user.email);
+            const p2Balance = await loadPlayerBalance(p2Socket.user.email);
+
+            // Check both players can afford the stake
+            if (p1Balance < p1Stake) {
+                p1Socket.emit("error", "Insufficient balance to stake");
+                return;
+            }
+            if (p2Balance < p2Stake) {
+                p2Socket.emit("error", "Insufficient balance to stake");
+                return;
+            }
+
+            // Deduct stakes from MongoDB atomically
+            try {
+                await deductStakeFromDB(p1Socket.user.email, p1Stake);
+                await deductStakeFromDB(p2Socket.user.email, p2Stake);
+            } catch (err) {
+                console.error("Stake deduction failed:", err.message);
+                p1Socket.emit("error", "Failed to deduct stake. Please try again.");
+                p2Socket.emit("error", "Failed to deduct stake. Please try again.");
+                return;
+            }
+
+            // Create room and assign players
+            const roomId = `room-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
             const room = createRoom(roomId);
-            if (!room) {
-                socket.emit("error", "Could not create or find room");
-                return;
-            }
 
-            let assignedRole = null;
+            // Set balances from what was in DB minus the now-committed stake
+            room.bank.balances.player1 = p1Balance - p1Stake;
+            room.bank.balances.player2 = p2Balance - p2Stake;
 
-            // ── Reconnect: player already in room ─────────────────────────────
-            for (const role of ["player1", "player2"]) {
-                const player = room.players[role];
-                if (player?.email === socket.user.email) {
-                    if (player.socketId && player.socketId !== socket.id) {
-                        const prev = io.sockets.sockets.get(player.socketId);
-                        if (prev) {
-                            prev.leave(roomId);
-                            prev.playerRole = null;
-                            prev.playerRoomId = null;
-                            prev.disconnect(true);
-                        }
-                    }
-                    player.socketId = socket.id;
-                    assignedRole = role;
-                    break;
-                }
-            }
+            // Initialise loan tracking
+            room.bank.loansIssued = { player1: 0, player2: 0 };
 
-            // ── New player joining ────────────────────────────────────────────
-            if (!assignedRole) {
-                for (const role of ["player1", "player2"]) {
-                    const player = room.players[role];
-                    if (!player?.socketId) {
-                        // Load persisted balance from MongoDB
-                        const persistedBalance = await loadPlayerBalance(socket.user.email);
+            // Assign players and build pot
+            assignPlayerToRoom(room, "player1", p1Socket, p1Stake);
+            assignPlayerToRoom(room, "player2", p2Socket, p2Stake);
 
-                        if (role === "player1") {
-                            if (persistedBalance < stakeAmount) {
-                                socket.emit("error", "Insufficient balance for stake");
-                                return;
-                            }
-                            room.players[role] = { socketId: socket.id, email: socket.user.email };
-                            room.bank.balances["player1"] = persistedBalance;
-                            room.stake = stakeAmount;
-                            room.player1Stake = stakeAmount;
-                            room.player2Stake = 0;
-                            room.bank.balances["player1"] -= stakeAmount;
-                            room.pot = stakeAmount;
-                        } else {
-                            if (!room.stake) {
-                                socket.emit("error", "Room has no stake set yet");
-                                return;
-                            }
-                            if (stakeAmount !== room.stake) {
-                                socket.emit("error", `You must match the room stake of R${room.stake}`);
-                                return;
-                            }
-                            const p2Balance = await loadPlayerBalance(socket.user.email);
-                            if (p2Balance < stakeAmount) {
-                                socket.emit("error", "Insufficient balance for stake");
-                                return;
-                            }
-                            room.players[role] = { socketId: socket.id, email: socket.user.email };
-                            room.bank.balances["player2"] = p2Balance;
-                            room.player2Stake = stakeAmount;
-                            room.bank.balances["player2"] -= stakeAmount;
-                            room.pot += stakeAmount;
-                        }
+            // Join both sockets to the room channel
+            p1Socket.join(roomId);
+            p2Socket.join(roomId);
 
-                        assignedRole = role;
-                        break;
-                    }
-                }
-            }
+            // Tag both sockets with role and room
+            p1Socket.playerRole = "player1";
+            p1Socket.playerRoomId = roomId;
+            p1Socket.currentRoomId = roomId;
 
-            if (!assignedRole) {
-                socket.emit("room-full", "Room is full");
-                return;
-            }
+            p2Socket.playerRole = "player2";
+            p2Socket.playerRoomId = roomId;
+            p2Socket.currentRoomId = roomId;
 
-            socket.join(roomId);
-            socket.currentRoomId = roomId;
-            socket.playerRoomId = roomId;
-            socket.playerRole = assignedRole;
+            console.log(`🎮 Match: ${p1Socket.user.email} vs ${p2Socket.user.email} in ${roomId}`);
 
-            socket.emit("player-role", assignedRole);
-            socket.emit("game-state", {
-                currentTurn: room.currentTurn,
-                isFirstRoll: room.isFirstRoll,
-                point: room.point,
-                pot: room.pot,
-                stake: room.stake,
-                player1Stake: room.player1Stake,
-                player2Stake: room.player2Stake,
-                balances: room.bank.balances,
-                loanPool: room.bank.loanPool,
-                role: assignedRole
-            });
+            p1Socket.emit("match-found", { roomId, role: "player1" });
+            p2Socket.emit("match-found", { roomId, role: "player2" });
 
-            emitRoomState(io, rooms, roomId, broadcastGameState);
+            broadcastGameState(io, rooms, roomId);
         });
 
-        // ── roll-dice ─────────────────────────────────────────────────────────
-        socket.on("roll-dice", async (payload) => {
-            const roomId = payload?.roomId;
-
-            if (!isValidRoomId(roomId)) {
-                socket.emit("error", "Invalid room ID");
+        // ── roll ──────────────────────────────────────────────────────────────
+        socket.on("roll-dice", async () => {
+            if (isRateLimited(socket.id, "roll")) {
+                socket.emit("error", "Rolling too fast");
                 return;
             }
 
-            if (isRateLimited(socket.id, "roll-dice", 1)) {
-                socket.emit("error", "Rolling too fast — slow down!");
-                return;
-            }
+            const roomId = socket.playerRoomId;
+            if (!roomId) return;
 
-            const room = getRoom(roomId);
-            if (!room) {
-                socket.emit("error", "Room not found");
-                return;
-            }
-
-            if (room.isProcessing) {
-                socket.emit("error", "A roll is already in progress");
-                return;
-            }
-
-            if (!room.player1Stake || !room.player2Stake) {
-                socket.emit("error", "Both players must stake before rolling");
-                return;
-            }
-
+            const room = rooms[roomId];
             const role = getOwnedRoomSeat(socket, roomId, room);
             if (!role) {
-                socket.emit("error", "You are not authorized to roll in this room");
+                socket.emit("error", "Not authorised to roll");
                 return;
             }
 
             if (room.currentTurn !== role) {
-                socket.emit("error", "It is not your turn");
+                socket.emit("error", "Not your turn");
                 return;
             }
 
-            room.isProcessing = true;
-
+            let result;
             try {
-                const result = processRoll(room);
+                result = processRoll(room);
+            } catch (err) {
+                socket.emit("error", err.message);
+                return;
+            }
 
-                io.to(roomId).emit("dice-result", {
-                    d1: result.d1,
-                    d2: result.d2,
-                    sum: result.sum,
-                    roller: role,
-                    nextTurn: result.nextTurn,
-                    message: result.message
-                });
+            io.to(roomId).emit("dice-result", {
+                d1: result.d1,
+                d2: result.d2,
+                sum: result.sum,
+                roller: result.roller,
+                message: result.message,
+                point: result.point,
+                nextTurn: result.nextTurn,
+                roundOver: result.roundOver,
+                winnerRole: result.winnerRole
+            });
 
-                if (result.roundOver && result.winnerRole) {
-                    const winnerRole = result.winnerRole;
-                    const loserRole = getOtherRole(winnerRole);
+            if (result.roundOver && result.winnerRole) {
+                // Guard: never pay out an empty pot
+                if (room.pot > 0) {
                     const payout = room.pot;
-
-                    creditBalance(room, winnerRole, payout);
+                    creditBalance(room, result.winnerRole, payout);
                     room.pot = 0;
                     room.player1Stake = 0;
                     room.player2Stake = 0;
+                    room.isFirstRoll = true;
+                    room.point = null;
+                    room.currentTurn = getOtherRole(result.winnerRole);
 
-                    // Update win tracking
-                    room.bank.winStreak[winnerRole] = (room.bank.winStreak[winnerRole] || 0) + 1;
-                    room.bank.winStreak[loserRole] = 0;
-                    room.bank.totalWins[winnerRole] = (room.bank.totalWins[winnerRole] || 0) + 1;
 
-                    const bankResult = applyBankRules(room, winnerRole);
+                    const p1Loan = room.bank.loansIssued.player1;
+                    const p2Loan = room.bank.loansIssued.player2;
+                    // Reset loan tracking for the next round
+                    room.bank.loansIssued = { player1: 0, player2: 0 };
 
-                    // Persist balances to MongoDB (non-blocking)
-                    persistBalances(room);
 
                     io.to(roomId).emit("round-winner", {
-                        winner: winnerRole,
-                        loser: loserRole,
+                        winner: result.winnerRole,
                         payout,
-                        balances: room.bank.balances,
-                        bankMessage: bankResult.taxed ? bankResult.message : null,
-                        // Remind players to stake for next round
-                        nextAction: "Place your bets for the next round!"
+                        balances: room.bank.balances
                     });
-                }
 
-                emitRoomState(io, rooms, roomId, broadcastGameState);
-            } finally {
-                room.isProcessing = false;
+                    await persistBalances(room, { player1: p1Loan, player2: p2Loan });
+
+                    delete rooms[roomId];
+                }
             }
+
+            broadcastGameState(io, rooms, roomId);
         });
 
         // ── place-bet ─────────────────────────────────────────────────────────
-        socket.on("place-bet", ({ roomId, amount } = {}) => {
-            if (!isValidRoomId(roomId)) {
-                socket.emit("error", "Invalid room ID");
-                return;
-            }
-
-            if (isRateLimited(socket.id, "place-bet", 2)) {
+        socket.on("place-bet", ({ amount } = {}) => {
+            if (isRateLimited(socket.id, "place-bet")) {
                 socket.emit("error", "Betting too fast");
-                return;
-            }
-
-            const room = getRoom(roomId);
-            if (!room) {
-                socket.emit("error", "Room not found");
-                return;
-            }
-
-            const role = getOwnedRoomSeat(socket, roomId, room);
-            if (!role) {
-                socket.emit("error", "You are not authorized to bet in this room");
                 return;
             }
 
@@ -356,99 +378,92 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
                 return;
             }
 
+            const roomId = socket.playerRoomId;
+            if (!roomId) return;
+
+            const room = rooms[roomId];
+            const role = getOwnedRoomSeat(socket, roomId, room);
+            if (!role) {
+                socket.emit("error", "Not authorised to bet");
+                return;
+            }
+
             try {
                 debitBalance(room, role, betAmount);
+                room.pot += betAmount;
+                room.roundContributions = room.roundContributions || { player1: 0, player2: 0 };
+                room.roundContributions[role] += betAmount;
             } catch (err) {
                 socket.emit("error", err.message);
                 return;
             }
 
-            room.pot += betAmount;
-            if (role === "player1") {
-                room.player1Stake = (room.player1Stake || 0) + betAmount;
-            } else {
-                room.player2Stake = (room.player2Stake || 0) + betAmount;
-            }
-
-            // Track last 3 bets for bank rules
-            if (!room.bank.last3Bets[role]) room.bank.last3Bets[role] = [];
-            room.bank.last3Bets[role].push(betAmount);
-            if (room.bank.last3Bets[role].length > 3) {
-                room.bank.last3Bets[role].shift();
-            }
-
-            emitRoomState(io, rooms, roomId, broadcastGameState);
+            broadcastGameState(io, rooms, roomId);
         });
 
         // ── request-loan ──────────────────────────────────────────────────────
-        socket.on("request-loan", ({ roomId, amount } = {}) => {
-            if (!isValidRoomId(roomId)) {
-                socket.emit("error", "Invalid room ID");
-                return;
-            }
-
-            if (isRateLimited(socket.id, "request-loan", 1)) {
+        socket.on("request-loan", ({ amount } = {}) => {
+            if (isRateLimited(socket.id, "request-loan")) {
                 socket.emit("error", "Too many loan requests");
                 return;
             }
 
-            const room = getRoom(roomId);
-            if (!room) {
-                socket.emit("error", "Room not found");
+            const loanAmount = Number(amount);
+            if (!Number.isFinite(loanAmount) || loanAmount <= 0 || loanAmount > MAX_LOAN) {
+                socket.emit("error", `Loan must be between R1 and R${MAX_LOAN}`);
                 return;
             }
 
+            const roomId = socket.playerRoomId;
+            if (!roomId) return;
+
+            const room = rooms[roomId];
             const role = getOwnedRoomSeat(socket, roomId, room);
             if (!role) {
-                socket.emit("error", "Unauthorized");
-                return;
-            }
-
-            const loanAmount = Number(amount);
-            if (!isValidAmount(loanAmount)) {
-                socket.emit("error", `Loan must be between R${MIN_BET} and R${MAX_BET}`);
-                return;
-            }
-
-            if (!room.bank.loansIssued) {
-                room.bank.loansIssued = { player1: 0, player2: 0 };
-            }
-
-            if ((room.bank.loansIssued[role] || 0) + loanAmount > MAX_LOAN) {
-                socket.emit("error", `Loan limit of R${MAX_LOAN} reached`);
+                socket.emit("error", "Not authorised to request loan");
                 return;
             }
 
             try {
-                const result = requestLoan(room, role, loanAmount);
-                room.bank.loansIssued[role] = (room.bank.loansIssued[role] || 0) + loanAmount;
-                socket.emit("loan-granted", { message: result.message });
-                emitRoomState(io, rooms, roomId, broadcastGameState);
+                loanHandler(room, role, loanAmount);
             } catch (err) {
                 socket.emit("error", err.message);
+                return;
             }
+
+            broadcastGameState(io, rooms, roomId);
         });
 
         // ── disconnect ────────────────────────────────────────────────────────
-        socket.on("disconnect", () => {
-            console.log(`❌ Socket disconnected [${socket.id}]`);
+        // Clear waitingPlayer if the disconnecting 
+        socket.on("disconnect", async () => {
+            console.log(`❌ Socket disconnected [${socket.id}] user: ${socket.user?.email}`);
+
+            // Clear the matchmaking queue if this player was waiting
+            if (waitingPlayer && waitingPlayer.socket.id === socket.id) {
+                waitingPlayer = null;
+                console.log(`🧹 Cleared waiting slot for ${socket.user.email}`);
+            }
 
             cleanRateLimits(socket.id);
 
             const roomId = socket.playerRoomId;
             if (!roomId) return;
 
-            const room = getRoom(roomId);
+            const room = rooms[roomId];
             if (!room) return;
 
-            const role = socket.playerRole;
-            if (role && room.players[role]?.socketId === socket.id) {
-                room.players[role].socketId = null;
+            // Persist current balances so a disconnect mid-round doesn't wipe progress
+            await persistBalances(room);
 
-                io.to(roomId).emit("player-disconnected", {
-                    message: `${role} disconnected. Waiting for reconnect...`,
-                    role
-                });
+            // Notify the other player
+            const otherRole = getOtherRole(socket.playerRole);
+            const otherPlayer = room.players[otherRole];
+            if (otherPlayer?.socketId) {
+                io.to(otherPlayer.socketId).emit(
+                    "opponent-disconnected",
+                    { message: "Your opponent disconnected." }
+                );
             }
         });
     });

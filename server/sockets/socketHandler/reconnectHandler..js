@@ -1,55 +1,12 @@
-function reconnectPlayer(
-    io,
-    socket,
-    room,
-    roomId
-) {
-
-    for (const role of [
-        "player1",
-        "player2"
-    ]) {
-
-        const player =
-            room.players[role];
-
-        if (
-            player?.email ===
-            socket.user.email
-        ) {
-
-            if (
-                player.socketId &&
-                player.socketId !== socket.id
-            ) {
-
-                const previous =
-                    io.sockets.sockets.get(
-                        player.socketId
-                    );
-
-                if (previous) {
-
-                    previous.leave(roomId);
-
-                    previous.playerRole = null;
-
-                    previous.playerRoomId = null;
-
-                    previous.disconnect(true);
-                }
-            }
-
-            player.socketId =
-                socket.id;
-
-            return role;
-        }
-    }
-
-    return null;
-}
-
-module.exports = {
-    reconnectPlayer
-};
+/**
+ * DEAD FILE — DO NOT USE.
+ *
+ * This file exists only because of an accidental double-dot in its filename.
+ * The active reconnect logic lives in reconnectHandler.js (single dot).
+ *
+ * Action required: delete this file from the repository.
+ */
+throw new Error(
+    "reconnectHandler..js was somehow loaded. This file must be deleted. " +
+    "Use reconnectHandler.js (single dot) instead."
+);

@@ -26,8 +26,31 @@ const socket = io(import.meta.env.VITE_API_URL, {
 });
 
 socket.on("connect", () => {
-  console.log("Socket connected:", socket.id);
-  socket.emit("join-room", { roomId, stake: DEFAULT_STAKE });
+  addLog(`Joining room: ${roomId}`);
+  console.log("================================");
+  console.log("Connected:", socket.id);
+  console.log("Room ID:", roomId);
+  console.log("URL:", window.location.href);
+  console.log("================================");
+
+  socket.emit("find-match", { stake: DEFAULT_STAKE });
+});
+
+socket.on("waiting", () => {
+  addLog("⏳ Waiting for opponent...");
+});
+
+socket.on("match-found", (data) => {
+
+  roomId = data.roomId;
+
+  gameState.myRole = data.role;
+
+  console.log("MATCH FOUND:", data);
+
+  console.log("ACTIVE ROOM:", roomId);
+
+  addLog(`🎲 Match found! Room: ${roomId}`);
 });
 
 socket.on("connect_error", (err) => {
@@ -216,10 +239,19 @@ socket.on("loan-granted", ({ message }) => {
 
 // ── Game state sync ───────────────────────────────────────────────────────────
 socket.on("game-state", (state) => {
+  gameState.pot = state.pot;
+  gameState.point = state.point;
   gameState.roller = state.currentTurn;
   gameState.isFirstRoll = state.isFirstRoll;
-  gameState.point = state.point;
-  gameState.pot = state.pot;
+  if (state.bank) gameState.bank = state.bank;
+  if (state.balances) {
+    gameState.bank.balances.player1 = state.balances.player1;
+    gameState.bank.balances.player2 = state.balances.player2;
+  }
+  if (typeof state.loanPool === "number") {
+    gameState.bank.loanPool = state.loanPool;
+  }
+
   gameState.bank.balances.player1 = state.balances.player1;
   gameState.bank.balances.player2 = state.balances.player2;
   gameState.bank.loanPool = state.loanPool;
@@ -265,6 +297,15 @@ function placeBetAction(player, amount) {
     addLog("⚠️ You can only bet for your own player");
     return;
   }
+  console.log(
+    "BET ROOM:",
+    roomId
+  );
+
+  console.log(
+    "MY ROLE:",
+    gameState.myRole
+  );
   socket.emit("place-bet", { roomId, amount });
 }
 

@@ -1,5 +1,5 @@
 function applyBankRules(room, player) {
-    // Fix: initialize each property separately with correct guards
+
     if (!room.bank.winStreak) room.bank.winStreak = { player1: 0, player2: 0 };
     if (!room.bank.totalWins) room.bank.totalWins = { player1: 0, player2: 0 };
     if (!room.bank.last3Bets) room.bank.last3Bets = { player1: [], player2: [] };

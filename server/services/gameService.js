@@ -29,8 +29,6 @@ function processRoll(room) {
             room.point = sum;
             room.isFirstRoll = false;
             message = `📌 Point set to ${sum}`;
-            nextTurn = roller === "player1" ? "player2" : "player1";
-            room.currentTurn = nextTurn;
         }
     } else {
         if (sum === room.point) {
@@ -50,7 +48,7 @@ function processRoll(room) {
         if (roundOver) {
             room.isFirstRoll = true;
             room.point = null;
-            room.currentTurn = winnerRole;
+            room.currentTurn = getOtherRole(winnerRole);
         }
     }
 

@@ -1,62 +1,15 @@
-const {
-    processRoll
-} = require("/services/gameService");
-
-const {
-    creditBalance
-} = require(
-    "./bankHandler"
+/**
+ * DEAD FILE — DO NOT USE.
+ *
+ * This file exists only because of an accidental double-dot in its filename.
+ * Node.js cannot reliably require() a file with ".." in its name.
+ *
+ * The active payout logic is inlined in gameSocket.js (the roll handler).
+ * The staged helper version lives in gameHandler.js (single dot).
+ *
+ * Action required: delete this file from the repository.
+ */
+throw new Error(
+    "gameHandler..js was somehow loaded. This file must be deleted. " +
+    "Use gameHandler.js (single dot) instead."
 );
-
-const {
-    getOtherRole
-} = require(
-    "./roleHelpers"
-);
-
-function handleWinner(
-    io,
-    roomId,
-    room,
-    winnerRole
-) {
-
-    const payout =
-        room.pot;
-
-    creditBalance(
-        room,
-        winnerRole,
-        payout
-    );
-
-    room.pot = 0;
-
-    room.player1Stake = 0;
-
-    room.player2Stake = 0;
-
-    room.isFirstRoll = true;
-
-    room.point = null;
-
-    room.currentTurn =
-        getOtherRole(
-            winnerRole
-        );
-
-    io.to(roomId)
-        .emit(
-            "round-winner",
-            {
-                winner: winnerRole,
-                payout,
-                balances:
-                    room.bank.balances
-            }
-        );
-}
-
-module.exports = {
-    handleWinner
-};
