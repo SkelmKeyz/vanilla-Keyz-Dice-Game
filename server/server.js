@@ -9,6 +9,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { Server } = require("socket.io");
 
+const PORT = process.env.PORT || 10000;
 // Services
 const otpRoutes = require("./routes/otpRoutes");
 const authRoutes = require("./routes/authRoutes");
