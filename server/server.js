@@ -81,7 +81,17 @@ io.use(socketAuth);
 initializeGameSocket(io, rooms, createRoom, getRoom, broadcastGameState);
 
 // ── 7. Connect DB and start server ────────────────────────────────────────────
-connectDB();
-httpServer.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
-});
+const startServer = async () => {
+  try {
+    await connectDB();
+    httpServer.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+      console.log(`✅ MONGO connected, ready for game`);
+    });
+  } catch (err) {
+    console.error("❌ Failed to start:", err.message);
+    process.exit(1);
+  }
+};
+
+startServer();
