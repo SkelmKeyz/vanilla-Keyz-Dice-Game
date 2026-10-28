@@ -9,7 +9,6 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { Server } = require("socket.io");
 
-const PORT = process.env.PORT || 10000;
 // Services
 const otpRoutes = require("./routes/otpRoutes");
 const authRoutes = require("./routes/authRoutes");
@@ -35,7 +34,7 @@ if (!process.env.CLIENT_URL) {
 
 const app = express();
 const httpServer = http.createServer(app);
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // ── 1. Security headers (must be first) ──────────────────────────────────────
 app.use(helmet());
