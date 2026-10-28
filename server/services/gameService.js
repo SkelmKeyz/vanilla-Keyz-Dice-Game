@@ -1,5 +1,9 @@
 const { randomInt } = require("crypto");
 
+function getOtherRole(role) {
+    return role === "player1" ? "player2" : "player1";
+}
+
 function processRoll(room) {
     if (!room || !room.currentTurn) {
         throw new Error("Invalid room data");
@@ -7,12 +11,10 @@ function processRoll(room) {
 
     const d1 = randomInt(1, 7);
     const d2 = randomInt(1, 7);
-
     const sum = d1 + d2;
     const roller = room.currentTurn;
 
     let message = null;
-    let nextTurn = null;
     let roundOver = false;
     let winnerRole = null;
 
@@ -24,7 +26,7 @@ function processRoll(room) {
         } else if (sum === 2 || sum === 3 || sum === 12) {
             message = `💀 ${roller} crapped out with ${sum}!`;
             roundOver = true;
-            winnerRole = roller === "player1" ? "player2" : "player1";
+            winnerRole = getOtherRole(roller);
         } else {
             room.point = sum;
             room.isFirstRoll = false;
@@ -38,18 +40,17 @@ function processRoll(room) {
         } else if (sum === 7) {
             message = `💀 Seven-out! ${roller} loses!`;
             roundOver = true;
-            winnerRole = roller === "player1" ? "player2" : "player1";
+            winnerRole = getOtherRole(roller);
         } else {
             message = `${roller} rolled ${sum}. Point remains ${room.point}`;
-            nextTurn = roller === "player1" ? "player2" : "player1";
-            room.currentTurn = nextTurn;
+            room.currentTurn = getOtherRole(roller);
         }
+    }
 
-        if (roundOver) {
-            room.isFirstRoll = true;
-            room.point = null;
-            room.currentTurn = getOtherRole(winnerRole);
-        }
+    if (roundOver) {
+        room.isFirstRoll = true;
+        room.point = null;
+        room.currentTurn = getOtherRole(winnerRole);
     }
 
     return {
@@ -57,7 +58,6 @@ function processRoll(room) {
         d2,
         sum,
         roller,
-        nextTurn: roundOver ? null : room.currentTurn,
         point: room.point,
         message,
         roundOver,

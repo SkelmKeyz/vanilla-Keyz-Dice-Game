@@ -6,7 +6,9 @@ function getOwnedRoomSeat(socket, roomId, room) {
     const player = room.players[role];
     if (!player || player.socketId !== socket.id || player.email !== socket.user.email) return null;
     return role;
+
 }
+
 
 function getOtherRole(role) {
     return role === "player1" ? "player2" : "player1";
@@ -16,3 +18,4 @@ module.exports = {
     getOwnedRoomSeat,
     getOtherRole
 };
+

@@ -51,6 +51,11 @@ socket.on("match-found", (data) => {
   console.log("ACTIVE ROOM:", roomId);
 
   addLog(`🎲 Match found! Room: ${roomId}`);
+
+  socket.emit("join-room", { roomId: roomId });
+
+  const newUrl = `${window.location.pathname}?${roomId}`;
+  window.history.pushState({ path: newUrl }, "", newUrl);
 });
 
 socket.on("connect_error", (err) => {
@@ -306,7 +311,7 @@ function placeBetAction(player, amount) {
     "MY ROLE:",
     gameState.myRole
   );
-  socket.emit("place-bet", { roomId, amount });
+  socket.emit("place-bet", { roomId, amount, player: gameState.myRole });
 }
 
 window.placeBet = placeBetAction;

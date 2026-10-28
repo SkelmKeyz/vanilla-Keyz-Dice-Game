@@ -22,6 +22,9 @@ function createRoom(roomId) {
             isFirstRoll: true,
             point: null,
             pot: 0,
+            stake: 0,
+            player1Stake: 0,
+            player2Stake: 0,
 
             roundContributions: {
                 player1: 0,
@@ -68,9 +71,37 @@ function deleteRoom(roomId) {
     delete rooms[roomId];
 }
 
+function assignPlayerToRoom(
+    room,
+    role,
+    socket,
+    stakeAmount
+) {
+
+    room.players[role] = {
+        socketId: socket.id,
+        email: socket.user.email
+    };
+
+    if (role === "player1") {
+        room.stake = stakeAmount;
+        room.player1Stake = stakeAmount;
+        room.player2Stake = 0;
+        room.pot = stakeAmount;
+        room.currentTurn = "player1";
+        room.isFirstRoll = true;
+        room.point = null;
+    } else {
+        room.player2Stake = stakeAmount;
+        room.pot += stakeAmount;
+    }
+}
+
+// Single export block for all room functions
 module.exports = {
     rooms,
     createRoom,
     getRoom,
-    deleteRoom
+    deleteRoom,
+    assignPlayerToRoom
 };
