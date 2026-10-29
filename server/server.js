@@ -1,6 +1,7 @@
 require("dns").setDefaultResultOrder("ipv4first");
 require("dotenv").config();
 
+
 // Dependencies
 const express = require("express");
 const cors = require("cors");
@@ -18,6 +19,8 @@ const initializeGameSocket = require("./sockets/gameSocket");
 const broadcastGameState = require("./utils/broadcastGameState");
 const connectDB = require("./config/database");
 
+
+
 // ── Env guard — fail fast if critical config is missing ───────────────────────
 if (!process.env.MONGO_URI) {
     console.error("FATAL: MONGO_URI is missing from .env");
@@ -34,7 +37,9 @@ if (!process.env.CLIENT_URL) {
 
 const app = express();
 const httpServer = http.createServer(app);
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
+
+console.log("DEBUG URI CHECK:", JSON.stringify(process.env.MONGO_URI));
 
 // ── 1. Security headers (must be first) ──────────────────────────────────────
 app.use(helmet());

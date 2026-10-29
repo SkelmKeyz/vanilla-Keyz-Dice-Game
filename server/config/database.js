@@ -17,4 +17,6 @@ async function connectDB() {
     }
 }
 
+console.log("DEBUG URI CHECK:", JSON.stringify(process.env.MONGO_URI));
+
 module.exports = connectDB;
