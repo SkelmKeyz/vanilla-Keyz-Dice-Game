@@ -38,11 +38,6 @@ if (!process.env.CLIENT_URL) {
 const app = express();
 const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 10000;
-<<<<<<< HEAD
-
-console.log("DEBUG URI CHECK:", JSON.stringify(process.env.MONGO_URI));
-=======
->>>>>>> bf66a21414186958bc8abc78ee5da67846532931
 
 // ── 1. Security headers (must be first) ──────────────────────────────────────
 app.use(helmet());
@@ -90,16 +85,16 @@ initializeGameSocket(io, rooms, createRoom, getRoom, broadcastGameState);
 
 // ── 7. Connect DB and start server ────────────────────────────────────────────
 const startServer = async () => {
-  try {
-    await connectDB();
-    httpServer.listen(PORT, () => {
-      console.log(`✅ Server running on port ${PORT}`);
-      console.log(`✅ MONGO connected, ready for game`);
-    });
-  } catch (err) {
-    console.error("❌ Failed to start:", err.message);
-    process.exit(1);
-  }
+    try {
+        await connectDB();
+        httpServer.listen(PORT, () => {
+            console.log(`✅ Server running on port ${PORT}`);
+            console.log(`✅ MONGO connected, ready for game`);
+        });
+    } catch (err) {
+        console.error("❌ Failed to start:", err.message);
+        process.exit(1);
+    }
 };
 
 startServer();
