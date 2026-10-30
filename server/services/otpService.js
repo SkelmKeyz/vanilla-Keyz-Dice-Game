@@ -1,52 +1,49 @@
-const otpStore = {};
+const User = require("../models/user");
+const { sendOTPEmail } = require("./emailService");
 
-function createOTP(email) {
+async function createOTP(email) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
 
-    const otp =
-        Math.floor(
-            100000 +
-            Math.random() * 900000
-        ).toString();
+    if (!user) {
+        throw new Error("User not found");
+    }
 
-    otpStore[email] = {
-        otp,
-        expiresAt:
-            Date.now() + 5 * 60 * 1000
-    };
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
+    user.otp = otp;
+    user.otpExpires = Date.now() + 5 * 60 * 1000; // 5 minutes expiration
+    await user.save();
+
+    await sendOTPEmail(normalizedEmail, otp);
     return otp;
 }
 
-function verifyOTP(email, otp) {
+async function verifyOTP(email, otp) {
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await User.findOne({ email: normalizedEmail });
 
-    const stored = otpStore[email];
-
-    if (!stored) {
-        throw new Error("OTP not found");
+    if (!user) {
+        throw new Error("User not found");
     }
 
-    if (
-        Date.now() >
-        stored.expiresAt
-    ) {
-
-        delete otpStore[email];
-
-        throw new Error(
-            "OTP expired"
-        );
+    if (user.isVerified) {
+        throw new Error("Email is already verified");
     }
 
-    if (
-        stored.otp !== otp
-    ) {
-
-        throw new Error(
-            "Invalid OTP"
-        );
+    if (!user.otp || Date.now() > user.otpExpires) {
+        throw new Error("OTP expired or not found");
     }
 
-    delete otpStore[email];
+    if (user.otp !== otp) {
+        throw new Error("Invalid OTP");
+    }
+
+    // Mark as verified and clear temporary OTP fields
+    user.isVerified = true;
+    user.otp = undefined;
+    user.otpExpires = undefined;
+    await user.save();
 
     return true;
 }
