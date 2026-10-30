@@ -1,4 +1,4 @@
-const { createOTP, verifyOTP } = require("../services/otpService");
+const { createOTP } = require("../services/otpService");
 const { sendOTPEmail } = require("../services/emailService");
 const User = require("../models/user");
 const jwt = require("jsonwebtoken");
@@ -6,14 +6,21 @@ const jwt = require("jsonwebtoken");
 // ── Send OTP ──────────────────────────────────────────────────────────────────
 exports.sendOTP = async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email } = req.path || req.body; // keeping your request handling robust
+        const targetEmail = (email || req.body.email || "").toLowerCase().trim();
 
-        if (!email || typeof email !== "string" || !email.includes("@")) {
+        if (!targetEmail || typeof targetEmail !== "string" || !targetEmail.includes("@")) {
             return res.status(400).json({ error: "Valid email is required" });
         }
 
-        const otp = createOTP(email.toLowerCase().trim());
-        await sendOTPEmail(email.toLowerCase().trim(), otp);
+        // FIX: Properly await the asynchronous OTP generator to get the actual 6-digit code string
+        const otp = await createOTP(targetEmail);
+
+        if (!otp) {
+            return res.status(500).json({ error: "Failed to generate OTP" });
+        }
+
+        await sendOTPEmail(targetEmail, otp);
 
         res.json({ success: true });
     } catch (err) {
