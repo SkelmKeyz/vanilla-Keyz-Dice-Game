@@ -1,4 +1,3 @@
-
 document
     .getElementById("verifyOtpBtn")
     .addEventListener("click", async () => {
@@ -27,13 +26,18 @@ document
 
             const data = await response.json();
 
-            if (data.verified) {
-                alert("✅ OTP Verified!");
+            if (response.ok && data.verified) {
+                // Optionally save token immediately or redirect to login
+                if (data.token) {
+                    localStorage.setItem("token", data.token);
+                    window.location.href = "/app.html";
+                } else {
+                    window.location.href = "/index.html"; // Back to login
+                }
             } else {
-                alert("❌ Invalid OTP");
+                alert(data.message || "Verification failed");
             }
-
         } catch (err) {
-            console.error(err);
+            console.error("Network or parsing error:", err);
         }
     });

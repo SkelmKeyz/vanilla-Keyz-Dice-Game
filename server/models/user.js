@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+
 const userSchema = new mongoose.Schema({
     email: {
         type: String,
@@ -21,6 +22,16 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 1000,
         min: 0
+    },
+
+    // otp database
+    otp: {
+        type: String,
+        default: null
+    },
+    otpExpires: {
+        type: Date,
+        default: null
     }
 }, {
     timestamps: true

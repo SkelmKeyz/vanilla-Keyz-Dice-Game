@@ -1,6 +1,7 @@
 const { createOTP, verifyOTP } = require("../services/otpService");
 const { sendOTPEmail } = require("../services/emailService");
 const User = require("../models/user");
+const jwt = require("jsonwebtoken");
 
 // ── Send OTP ──────────────────────────────────────────────────────────────────
 exports.sendOTP = async (req, res) => {
@@ -23,13 +24,13 @@ exports.sendOTP = async (req, res) => {
 
 // ── Verify OTP ────────────────────────────────────────────────────────────────
 exports.verifyOTP = async (req, res) => {
-    const { email, otp } = req.body;
-
-    if (!email || !otp) {
-        return res.status(400).json({ error: "Email and OTP are required" });
-    }
-
     try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ error: "Email and OTP are required" });
+        }
+
         const normalizedEmail = email.toLowerCase().trim();
         const user = await User.findOne({ email: normalizedEmail });
 
@@ -59,7 +60,7 @@ exports.verifyOTP = async (req, res) => {
             { expiresIn: "7d" }
         );
 
-        res.json({ message: "Email verified successfully", token });
+        res.json({ verified: true, message: "Email verified successfully", token });
 
     } catch (err) {
         console.error("Verify OTP error:", err.message);
