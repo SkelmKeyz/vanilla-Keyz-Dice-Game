@@ -39,6 +39,9 @@ const app = express();
 const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 10000;
 
+// Trust Render's reverse proxy
+app.set('trust proxy', 1);
+
 // ── 1. Security headers (must be first) ──────────────────────────────────────
 app.use(helmet());
 
