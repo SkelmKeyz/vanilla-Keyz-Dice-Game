@@ -9,7 +9,6 @@ function getOwnedRoomSeat(socket, roomId, room) {
 
 }
 
-
 function getOtherRole(role) {
     return role === "player1" ? "player2" : "player1";
 }

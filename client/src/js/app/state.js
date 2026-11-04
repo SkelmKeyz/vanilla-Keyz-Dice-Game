@@ -26,7 +26,7 @@ const gameState = new GameState(
   "player1",  // default — will be overwritten by game-state event
   0,
   {
-    loanPool: 500,
+    loanPool: 0,
     balances: { player1: 1000, player2: 1000 },
     bets: [],
     winStreak: { player1: 0, player2: 0 },

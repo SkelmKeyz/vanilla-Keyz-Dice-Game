@@ -30,10 +30,24 @@ function debitBalance(room, role, amount) {
     room.bank.balances[role] -= amount;
 }
 
-function creditBalance(room, role, amount) {
-    if (typeof amount !== "number" || amount <= 0) throw new Error("Invalid credit amount");
-    room.bank.balances[role] += amount;
-}
+function creditBalance(room, winnerRole, payout) {
+
+    if (
+        typeof payout !== "number" ||
+        payout <= 0
+    ) {
+        throw new Error(
+            `Invalid credit amount: ${payout}`
+        );
+    }
+
+    room.bank.balances[winnerRole] += payout;
+
+    console.log("Winner:", winnerRole);
+    console.log("Pot:", room.pot);
+    console.log("Payout:", payout);
+};
+
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 const rateLimits = {};
@@ -55,20 +69,39 @@ function cleanRateLimits(socketId) {
 }
 
 // ── Persist balances to MongoDB after round end ───────────────────────────────
-async function persistBalances(room, loansOverride) {
+async function persistBalances(room) {
     try {
-        const loans = loansOverride || room.bank.loansIssued || { player1: 0, player2: 0 };
         const p1Email = room.players.player1?.email;
         const p2Email = room.players.player2?.email;
 
         if (p1Email) {
-            const p1Final = Math.max(0, room.bank.balances.player1 - loans.player1);
-            await User.updateOne({ email: p1Email }, { $set: { balance: p1Final } });
+            await User.updateOne(
+                { email: p1Email },
+                {
+                    $set: {
+                        balance: Math.max(
+                            0,
+                            room.bank.balances.player1
+                        )
+                    }
+                }
+            );
         }
+
         if (p2Email) {
-            const p2Final = Math.max(0, room.bank.balances.player2 - loans.player2);
-            await User.updateOne({ email: p2Email }, { $set: { balance: p2Final } });
+            await User.updateOne(
+                { email: p2Email },
+                {
+                    $set: {
+                        balance: Math.max(
+                            0,
+                            room.bank.balances.player2
+                        )
+                    }
+                }
+            );
         }
+
     } catch (err) {
         console.error("Balance persist failed:", err.message);
     }
@@ -90,9 +123,13 @@ async function deductStakeFromDB(email, amount) {
     const result = await User.findOneAndUpdate(
         { email, balance: { $gte: amount } },
         { $inc: { balance: -amount } },
-        { new: true }
+        { returnDocument: "after" }
     );
-    if (!result) throw new Error(`Insufficient funds in DB for ${email}`);
+
+    if (!result) {
+        throw new Error(`Insufficient funds in DB for ${email}`);
+    }
+
     return result.balance;
 }
 
@@ -147,6 +184,18 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
 
         // ── find-match ────────────────────────────────────────────────────────
         socket.on("find-match", async ({ stake = 100 } = {}) => {
+
+            console.log("=================================");
+            console.log("FIND MATCH");
+            console.log("EMAIL:", socket.user.email);
+            console.log("STAKE:", stake);
+            console.log(
+                "WAITING PLAYER:",
+                waitingPlayer?.socket?.user?.email
+            );
+            console.log("=================================");
+
+
             const stakeAmount = Number(stake);
 
             if (!Number.isFinite(stakeAmount) || stakeAmount < MIN_BET || stakeAmount > MAX_BET) {
@@ -160,11 +209,21 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
             }
 
             if (!waitingPlayer) {
+                console.log(
+                    "NO PLAYER WAITING - STORING",
+                    socket.user.email
+                );
                 waitingPlayer = { socket, stake: stakeAmount };
                 console.log(`⏳ ${socket.user.email} waiting for opponent`);
                 socket.emit("waiting", { message: "Waiting for opponent..." });
                 return;
             }
+            console.log(
+                "MATCH ATTEMPT",
+                waitingPlayer.socket.user.email,
+                "VS",
+                socket.user.email
+            );
 
             const p1Socket = waitingPlayer.socket;
             const p1Stake = waitingPlayer.stake;
@@ -181,9 +240,24 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
 
             waitingPlayer = null;
 
+            console.log(
+                "LOADING BALANCES..."
+            );
+
             try {
                 const p1Balance = await loadPlayerBalance(p1Socket.user.email);
                 const p2Balance = await loadPlayerBalance(p2Socket.user.email);
+                console.log(
+                    "P1:",
+                    p1Socket.user.email,
+                    p1Balance
+                );
+
+                console.log(
+                    "P2:",
+                    p2Socket.user.email,
+                    p2Balance
+                );
 
                 if (p1Balance < p1Stake) {
                     p1Socket.emit("error", "Insufficient balance for this stake");
@@ -196,9 +270,22 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
                     return;
                 }
 
+                console.log("P1 BALANCE:", p1Balance);
+                console.log("P2 BALANCE:", p2Balance);
+
                 // Deduct stakes atomically from DB
                 await deductStakeFromDB(p1Socket.user.email, p1Stake);
+                console.log(
+                    "P1 DEDUCTED"
+                );
                 await deductStakeFromDB(p2Socket.user.email, p2Stake);
+                console.log(
+                    "P2 DEDUCTED"
+                );
+                console.log("CREATING ROOM...");
+                console.log(
+                    "DEDUCTING STAKES..."
+                );
 
                 const roomId = `room-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
                 const room = createRoom(roomId);
@@ -224,45 +311,183 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
 
                 console.log(`🎮 Match created: ${roomId} | ${p1Socket.user.email} vs ${p2Socket.user.email}`);
 
+                console.log("MATCH CREATED");
+
                 p1Socket.emit("match-found", { roomId, role: "player1" });
                 p2Socket.emit("match-found", { roomId, role: "player2" });
 
+                p1Socket.emit("player-role", "player1");
+                p2Socket.emit("player-role", "player2");
+
                 broadcastGameState(io, rooms, roomId);
 
+                console.log(
+                    "FIND MATCH:",
+                    socket.user.email,
+                    "stake:",
+                    stake
+                );
+
             } catch (err) {
-                console.error("Match creation error:", err.message);
+                console.error(
+                    "MATCH ERROR:"
+                );
+                console.error(err);
                 p1Socket.emit("error", "Match creation failed: " + err.message);
                 socket.emit("error", "Match creation failed: " + err.message);
             }
         });
 
         // ── roll-dice ─────────────────────────────────────────────────────────
-        socket.on("roll-dice", ({ roomId } = {}) => {
+        socket.on("roll-dice", async ({ roomId } = {}) => {
+            // Gate 1: Rate limit
+            if (isRateLimited(socket.id, "roll-dice")) {
+                socket.emit("error", "Too fast — one roll per second");
+                return;
+            }
+
+            // Gate 2: Room ID format
             if (!isValidRoomId(roomId)) {
                 socket.emit("error", "Invalid room ID");
                 return;
             }
-            if (isRateLimited(socket.id, "roll-dice")) {
-                socket.emit("error", "Rolling too fast — slow down");
+
+            const room = getRoom(roomId);
+            if (!room) {
+                socket.emit("error", "Room not found");
                 return;
             }
 
-            const room = getRoom(roomId);
+            // Gate 3: Seat ownership (triple-check: roomId, role, email, socketId)
             const role = getOwnedRoomSeat(socket, roomId, room);
-
             if (!role) {
                 socket.emit("error", "Not authorised to roll");
                 return;
             }
 
+            // Gate 4: Turn enforcement ← THIS WAS MISSING
             if (room.currentTurn !== role) {
+                socket.emit("error", "Not your turn to roll");
+                return;
+            }
+            // Gate 5: Both players present
+            if (!room.players.player1?.email || !room.players.player2?.email) {
                 socket.emit("error", "Not your turn to roll");
                 return;
             }
 
             try {
+                // Step 1: Generate dice result (mutates room.point, room.isFirstRoll, room.currentTurn)
                 const result = processRoll(room);
 
+                if (!result.roundOver) {
+                    // Mid-round — just broadcast updated state
+                    broadcastGameState(io, rooms, roomId);
+                    io.to(roomId).emit("dice-result", {
+                        d1: result.d1,
+                        d2: result.d2,
+                        sum: result.sum,
+                        roller: result.roller,
+                        message: result.message,
+                        point: result.point
+                    });
+                    return;
+                }
+
+                // ── Round is over ────────────────────────────────────────────────────
+                const winnerRole = result.winnerRole;
+                const loserRole = winnerRole === "player1" ? "player2" : "player1";
+                const payout = room.pot;
+
+                // Step 2 & 3: Apply streak/tax rules BEFORE paying winner
+                //   Pass the stake as the bet amount for last3Bets tracking
+
+                // Update stats
+                if (!room.bank.lossStreak) {
+                    room.bank.lossStreak = {
+                        player1: 0,
+                        player2: 0
+                    };
+                }
+
+                room.bank.totalWins[winnerRole]++;
+                room.bank.winStreak[winnerRole]++;
+                room.bank.winStreak[loserRole] = 0;
+
+                room.bank.lossStreak[loserRole]++;
+                room.bank.lossStreak[winnerRole] = 0;
+
+                const taxResult = applyBankRules(room, winnerRole);
+                console.log("TAX RESULT:", taxResult);
+
+                if (taxResult.taxed) {
+                    console.log("BANK EVENT:", taxResult.message);
+                    io.to(roomId).emit(
+                        "bank-tax",
+                        {
+                            player: winnerRole,
+                            message: taxResult.message,
+                            balances: room.bank.balances,
+                            loanPool: room.bank.loanPool
+                        }
+                    );
+                }
+
+                // Step 4: Pay winner
+                if (payout > 0) {
+                    creditBalance(room, winnerRole, payout);
+                }
+                room.pot = 0;
+                room.player1Stake = 0;
+                room.player2Stake = 0;
+
+                // Step 5: Handle roller transfer from tax/buyback
+                if (taxResult.rollerTransfer) {
+                    room.currentTurn = loserRole;
+                } else {
+                    // Loss streak check — 3 consecutive losses transfers roller
+                    const lossStreak = room.bank.lossStreak[loserRole] || 0;
+                    if (lossStreak >= 3) {
+                        room.currentTurn = loserRole;
+                        room.bank.lossStreak[loserRole] = 0;
+                        io.to(roomId).emit("roller-transfer", {
+                            reason: "3-loss-streak",
+                            newRoller: loserRole
+                        });
+                    }
+                    // else: current winner (roller) keeps rolling — currentTurn stays
+                    // Note: processRoll already set currentTurn; we override here for buyback/streak logic
+                }
+
+                // Reset round state
+                room.isFirstRoll = true;
+                room.point = null;
+
+                // Step 6: Persist balances to MongoDB
+                await persistBalances(room, room.bank.loansIssued);
+
+                // Step 7: Save game result record
+                try {
+                    await GameResult.create({
+                        roomId,
+                        winner: room.players[winnerRole].email,
+                        loser: room.players[loserRole].email,
+                        payout,
+                        reason: result.reason || "point"
+                    });
+                } catch (dbErr) {
+                    console.error("GameResult save failed:", dbErr.message);
+                    // Non-fatal — game continues
+                }
+
+                io.to(roomId).emit("round-winner", {
+                    winner: winnerRole,
+                    payout,
+                    balances: room.bank.balances
+                });
+
+                // Step 8: Broadcast everything
+                broadcastGameState(io, rooms, roomId);
                 io.to(roomId).emit("dice-result", {
                     d1: result.d1,
                     d2: result.d2,
@@ -270,34 +495,10 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
                     roller: result.roller,
                     message: result.message,
                     point: result.point,
-                    isFirstRoll: room.isFirstRoll
+                    roundOver: true,
+                    payout,
+                    taxMessage: taxResult.message
                 });
-
-                if (result.roundOver) {
-                    const winnerRole = result.winnerRole;
-                    const payout = room.pot;
-
-                    creditBalance(room, winnerRole, payout);
-                    room.pot = 0;
-                    room.player1Stake = 0;
-                    room.player2Stake = 0;
-                    room.isFirstRoll = true;
-                    room.point = null;
-                    room.currentTurn = getOtherRole(winnerRole);
-
-                    io.to(roomId).emit("round-winner", {
-                        winner: winnerRole,
-                        payout,
-                        balances: room.bank.balances
-                    });
-
-                    persistBalances(room).catch(err =>
-                        console.error("Persist error:", err.message)
-                    );
-                }
-
-                broadcastGameState(io, rooms, roomId);
-
             } catch (err) {
                 console.error("Roll error:", err.message);
                 socket.emit("error", "Roll failed: " + err.message);
@@ -306,6 +507,13 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
 
         // ── place-bet ─────────────────────────────────────────────────────────
         socket.on("place-bet", ({ roomId, amount, player } = {}) => {
+            console.log("BET REQUEST", {
+                roomId,
+                amount,
+                player,
+                socketRole: socket.playerRole,
+                playerRoomId: socket.playerRoomId
+            });
             if (!isValidRoomId(roomId)) {
                 socket.emit("error", "Invalid room ID");
                 return;
@@ -316,6 +524,21 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
             }
 
             const room = getRoom(roomId);
+            if (!room) {
+                socket.emit(
+                    "error",
+                    "Room not found"
+                );
+                return;
+            }
+            console.log("ROLE CHECK", {
+                roomId,
+                socketRoom: socket.playerRoomId,
+                socketRole: socket.playerRole,
+                socketId: socket.id,
+                roomPlayer1: room.players.player1,
+                roomPlayer2: room.players.player2
+            });
             const role = getOwnedRoomSeat(socket, roomId, room);
 
             if (!role) {
@@ -340,6 +563,21 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
                 room.pot += betAmount;
                 room.roundContributions[role] = (room.roundContributions[role] || 0) + betAmount;
 
+                if (!room.bank.last3Bets[role]) {
+                    room.bank.last3Bets[role] = [];
+                }
+
+                room.bank.last3Bets[role].push(betAmount);
+
+                if (room.bank.last3Bets[role].length > 3) {
+                    room.bank.last3Bets[role].shift();
+                }
+
+                console.log(
+                    "last3Bets:",
+                    room.bank.last3Bets
+                );
+
                 io.to(roomId).emit("bet-placed", {
                     player: role,
                     amount: betAmount,
@@ -362,6 +600,13 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
             }
 
             const room = getRoom(roomId);
+            if (!room) {
+                socket.emit(
+                    "error",
+                    "Room not found"
+                );
+                return;
+            }
             const role = getOwnedRoomSeat(socket, roomId, room);
 
             if (!role) {
@@ -394,12 +639,71 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
 
         // ── disconnect ────────────────────────────────────────────────────────
         socket.on("disconnect", () => {
-            console.log(`❌ Socket disconnected [${socket.id}] user: ${socket.user?.email}`);
 
-            // Remove from waiting queue if they were waiting
-            if (waitingPlayer && waitingPlayer.socket.id === socket.id) {
+            console.log(
+                `❌ Socket disconnected [${socket.id}] user: ${socket.user?.email}`
+            );
+
+            if (
+                waitingPlayer &&
+                waitingPlayer.socket.id === socket.id
+            ) {
+
                 waitingPlayer = null;
-                console.log(`🗑️ Removed ${socket.user?.email} from waiting queue`);
+
+                console.log(
+                    `🗑️ Removed ${socket.user?.email} from waiting queue`
+                );
+            }
+
+            const roomId = socket.playerRoomId;
+
+            if (roomId && rooms[roomId]) {
+
+                const room = rooms[roomId];
+
+                if (
+                    room.players.player1?.socketId === socket.id
+                ) {
+                    room.players.player1.socketId = null;
+                }
+
+                if (
+                    room.players.player2?.socketId === socket.id
+                ) {
+                    room.players.player2.socketId = null;
+                }
+
+                io.to(roomId).emit(
+                    "player-disconnected",
+                    {
+                        message:
+                            `${socket.user.email} disconnected`
+                    }
+                );
+
+                setTimeout(() => {
+
+                    const room = rooms[roomId];
+
+                    if (!room) return;
+
+                    const p1Connected =
+                        room.players.player1?.socketId;
+
+                    const p2Connected =
+                        room.players.player2?.socketId;
+
+                    if (!p1Connected && !p2Connected) {
+
+                        delete rooms[roomId];
+
+                        console.log(
+                            `🗑️ Room deleted: ${roomId}`
+                        );
+                    }
+
+                }, 60000);
             }
 
             cleanRateLimits(socket.id);

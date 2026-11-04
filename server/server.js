@@ -35,6 +35,14 @@ if (!process.env.CLIENT_URL) {
     process.exit(1);
 }
 
+process.on("uncaughtException", err => {
+    console.error("UNCAUGHT:", err);
+});
+
+process.on("unhandledRejection", err => {
+    console.error("UNHANDLED:", err);
+});
+
 const app = express();
 const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 10000;

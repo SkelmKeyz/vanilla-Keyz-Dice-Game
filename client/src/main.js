@@ -33,7 +33,10 @@ socket.on("connect", () => {
   console.log("URL:", window.location.href);
   console.log("================================");
 
-  socket.emit("find-match", { stake: DEFAULT_STAKE });
+  if (!gameState.myRole) {
+
+    socket.emit("find-match", { stake: DEFAULT_STAKE });
+  }
 });
 
 socket.on("waiting", () => {
@@ -42,19 +45,79 @@ socket.on("waiting", () => {
 
 socket.on("match-found", (data) => {
 
-  roomId = data.roomId;
-
   gameState.myRole = data.role;
+  roomId = data.roomId;
+  console.log(
+    "MATCH ROOM SET TO:",
+    roomId
+  );
+
+
+  socket.on("bet-placed", (data) => {
+
+    console.log("BET PLACED:", data);
+
+    addLog(
+      `${data.player} bet R${data.amount}`
+    );
+
+    gameState.pot = data.pot;
+
+    gameState.bank.balances =
+      data.balances;
+
+    updateDisplay();
+
+  });
+
+  addLog(`✅ You are ${data.role}`);
+  console.log("MATCH FOUND:", data);
+  console.log("ROLE:", data.role);
+
+  setTimeout(() => {
+    const myRoleEl =
+      document.getElementById("myRoleDisplay");
+
+
+
+    if (myRoleEl) {
+      myRoleEl.textContent =
+        `You are: ${data.role}`;
+    }
+
+    console.log(
+      "ROLE ELEMENT:",
+      myRoleEl
+    );
+
+  }, 1000);
+
+
+  setStatus(`✅ You are ${data.role}`);
+
+  const turnIndicator =
+    document.getElementById(
+      "turnIndicator"
+    );
+
+  if (turnIndicator) {
+    turnIndicator.textContent =
+      `✅ Role assigned: ${data.role}`;
+  }
+  updateDisplay();
 
   console.log("MATCH FOUND:", data);
+  console.log("ROLE RECEIVED:", data.role);
+  console.log(
+    "MY ROLE SET TO:",
+    gameState.myRole
+  );
 
   console.log("ACTIVE ROOM:", roomId);
 
   addLog(`🎲 Match found! Room: ${roomId}`);
 
-  socket.emit("join-room", { roomId: roomId });
-
-  const newUrl = `${window.location.pathname}?${roomId}`;
+  const newUrl = `${window.location.pathname}?room=${roomId}`;
   window.history.pushState({ path: newUrl }, "", newUrl);
 });
 
@@ -162,8 +225,26 @@ socket.on("player-role", (role) => {
     if (loanBtn) { loanBtn.disabled = true; }
   }
 
+  console.log(
+    "PLAYER ROLE EVENT:",
+    role
+  );
+
   const myRoleEl = document.getElementById("myRoleDisplay");
   if (myRoleEl) myRoleEl.textContent = `You are: ${role}`;
+});
+
+// ── Bank Tax ────────
+socket.on("bank-tax", data => {
+  addLog(data.message);
+
+  gameState.bank.balances =
+    data.balances;
+
+  gameState.bank.loanPool =
+    data.loanPool;
+
+  updateDisplay();
 });
 
 // ── Roll button ───────────────────────────────────────────────────────────────
@@ -250,15 +331,16 @@ socket.on("game-state", (state) => {
   gameState.isFirstRoll = state.isFirstRoll;
   if (state.bank) gameState.bank = state.bank;
   if (state.balances) {
-    gameState.bank.balances.player1 = state.balances.player1;
-    gameState.bank.balances.player2 = state.balances.player2;
+    gameState.bank.balances.player1 =
+      state.balances.player1;
+
+    gameState.bank.balances.player2 =
+      state.balances.player2;
   }
   if (typeof state.loanPool === "number") {
     gameState.bank.loanPool = state.loanPool;
   }
 
-  gameState.bank.balances.player1 = state.balances.player1;
-  gameState.bank.balances.player2 = state.balances.player2;
   gameState.bank.loanPool = state.loanPool;
 
   if (!gameState.myRole && state.role) {
@@ -335,3 +417,7 @@ function requestLoanAction(player, amount) {
 }
 
 window.requestLoan = requestLoanAction;
+
+window.addEventListener("beforeunload", () => {
+  socket.disconnect();
+});

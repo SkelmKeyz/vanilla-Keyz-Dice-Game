@@ -25,37 +25,37 @@ function createRoom(roomId) {
             stake: 0,
             player1Stake: 0,
             player2Stake: 0,
-
             roundContributions: {
                 player1: 0,
                 player2: 0
             },
-
             bank: {
                 loanPool: 500,
-
                 balances: {
                     player1: 1000,
                     player2: 1000
                 },
-
                 bets: [],
-
                 winStreak: {
                     player1: 0,
                     player2: 0
                 },
-
+                lossStreak: {
+                    player1: 0,
+                    player2: 0
+                },
+                loansIssued: {
+                    player1: 0,
+                    player2: 0
+                },
                 totalWins: {
                     player1: 0,
                     player2: 0
                 },
-
                 specialLossStreak: {
                     player1: 0,
                     player2: 0
                 },
-
                 last3Bets: {
                     player1: [],
                     player2: []
@@ -63,7 +63,6 @@ function createRoom(roomId) {
             }
         };
     }
-
     return rooms[roomId];
 }
 
