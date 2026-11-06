@@ -163,11 +163,11 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
             const { roomId, room } = existingRoom;
 
             if (room.players.player1?.email === socket.user.email) {
-                // Fixed: was sockectId (typo) — now socketId to match roleHelpers.js
+                // socketId to match roleHelpers.js
                 room.players.player1.socketId = socket.id;
                 socket.playerRole = "player1";
             } else if (room.players.player2?.email === socket.user.email) {
-                // Fixed: was sockectId (typo) — now socketId to match roleHelpers.js
+                // socketId to match roleHelpers.js
                 room.players.player2.socketId = socket.id;
                 socket.playerRole = "player2";
             }
@@ -177,9 +177,32 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
             socket.join(roomId);
 
             console.log(`♻️ Reconnected ${socket.user.email} to room ${roomId}`);
-            socket.emit("player-role", socket.playerRole);
+            console.log(
+                "RECONNECTED",
+                socket.id,
+                socket.user?.email
+            );
+            socket.emit("player-role", {
+                role: socket.playerRole,
+                roomId
+            });
+
             broadcastGameState(io, rooms, roomId);
-            return;
+        }
+
+        if (
+            socket.playerRoomId &&
+            !existingRoom
+        ) {
+
+            socket.emit(
+                "session-expired",
+                {
+                    message:
+                        "Game session expired. Please find a new match."
+                }
+            );
+
         }
 
         // ── find-match ────────────────────────────────────────────────────────
@@ -316,8 +339,14 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
                 p1Socket.emit("match-found", { roomId, role: "player1" });
                 p2Socket.emit("match-found", { roomId, role: "player2" });
 
-                p1Socket.emit("player-role", "player1");
-                p2Socket.emit("player-role", "player2");
+                p1Socket.emit("player-role", {
+                    role: "player1",
+                    roomId
+                });
+                p2Socket.emit("player-role", {
+                    role: "player2",
+                    roomId
+                });
 
                 broadcastGameState(io, rooms, roomId);
 
@@ -507,13 +536,7 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
 
         // ── place-bet ─────────────────────────────────────────────────────────
         socket.on("place-bet", ({ roomId, amount, player } = {}) => {
-            console.log("BET REQUEST", {
-                roomId,
-                amount,
-                player,
-                socketRole: socket.playerRole,
-                playerRoomId: socket.playerRoomId
-            });
+
             if (!isValidRoomId(roomId)) {
                 socket.emit("error", "Invalid room ID");
                 return;
@@ -531,14 +554,7 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
                 );
                 return;
             }
-            console.log("ROLE CHECK", {
-                roomId,
-                socketRoom: socket.playerRoomId,
-                socketRole: socket.playerRole,
-                socketId: socket.id,
-                roomPlayer1: room.players.player1,
-                roomPlayer2: room.players.player2
-            });
+
             const role = getOwnedRoomSeat(socket, roomId, room);
 
             if (!role) {
@@ -640,20 +656,12 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
         // ── disconnect ────────────────────────────────────────────────────────
         socket.on("disconnect", () => {
 
-            console.log(
-                `❌ Socket disconnected [${socket.id}] user: ${socket.user?.email}`
-            );
-
             if (
                 waitingPlayer &&
                 waitingPlayer.socket.id === socket.id
             ) {
 
                 waitingPlayer = null;
-
-                console.log(
-                    `🗑️ Removed ${socket.user?.email} from waiting queue`
-                );
             }
 
             const roomId = socket.playerRoomId;

@@ -1,7 +1,7 @@
 import gameState from "./js/app/state";
 import { addLog, updateDisplay, setStatus } from "./js/app/ui.js";
 import { animateDice } from "./js/routes/roll.js";
-import './style.css';
+import "./style.css";
 import { io } from "socket.io-client";
 
 // ── Auth guard ────────────────────────────────────────────────────────────────
@@ -12,11 +12,14 @@ if (!token) {
 
 // ── Room ID from URL or generate new one ──────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
-let roomId = params.get("room");
-if (!roomId) {
-  roomId = "room-" + Math.random().toString(36).substr(2, 8);
-  history.replaceState({}, "", `?room=${roomId}`);
-}
+
+let roomId =
+  params.get("room");
+
+console.log(
+  "ROOM FROM URL:",
+  roomId
+);
 
 const DEFAULT_STAKE = 100;
 
@@ -25,60 +28,78 @@ const socket = io(import.meta.env.VITE_API_URL, {
   auth: { token }
 });
 
+socket.on("connect_error", (err) => {
+  console.error("Socket connection error:", err.message);
+  addLog(`⚠️ Connection error: ${err.message}`);
+});
+let reconnectResolved = false
+
 socket.on("connect", () => {
   addLog(`Joining room: ${roomId}`);
   console.log("================================");
   console.log("Connected:", socket.id);
   console.log("Room ID:", roomId);
   console.log("URL:", window.location.href);
+  console.log(
+    "NEW SOCKET:",
+    socket.id
+  );
   console.log("================================");
-
-  if (!gameState.myRole) {
-
-    socket.emit("find-match", { stake: DEFAULT_STAKE });
-  }
+  setTimeout(() => {
+    if (!reconnectResolved && !roomId) {
+      console.log(
+        "Starting matchmaking..."
+      );
+      socket.emit("find-match", { stake: DEFAULT_STAKE });
+    }
+  }, 2000);
 });
 
 socket.on("waiting", () => {
   addLog("⏳ Waiting for opponent...");
 });
 
+socket.on("bet-placed", (data) => {
+
+  console.log("BET PLACED:", data);
+
+  addLog(
+    `${data.player} bet R${data.amount}`
+  );
+
+  gameState.pot = data.pot;
+
+  gameState.bank.balances =
+    data.balances;
+
+  updateDisplay();
+
+});
+
 socket.on("match-found", (data) => {
 
   gameState.myRole = data.role;
-  roomId = data.roomId;
-  console.log(
-    "MATCH ROOM SET TO:",
-    roomId
-  );
-
-
-  socket.on("bet-placed", (data) => {
-
-    console.log("BET PLACED:", data);
-
-    addLog(
-      `${data.player} bet R${data.amount}`
+  if (data.roomId) {
+    roomId = data.roomId;
+    history.replaceState(
+      {},
+      "",
+      `?room=${roomId}`
     );
-
-    gameState.pot = data.pot;
-
-    gameState.bank.balances =
-      data.balances;
-
-    updateDisplay();
-
-  });
-
+    console.log(
+      "MATCH ROOM SET TO:",
+      roomId
+    );
+  }
   addLog(`✅ You are ${data.role}`);
+
+
   console.log("MATCH FOUND:", data);
   console.log("ROLE:", data.role);
 
   setTimeout(() => {
     const myRoleEl =
       document.getElementById("myRoleDisplay");
-
-
 
     if (myRoleEl) {
       myRoleEl.textContent =
@@ -116,15 +137,26 @@ socket.on("match-found", (data) => {
   console.log("ACTIVE ROOM:", roomId);
 
   addLog(`🎲 Match found! Room: ${roomId}`);
-
-  const newUrl = `${window.location.pathname}?room=${roomId}`;
-  window.history.pushState({ path: newUrl }, "", newUrl);
 });
 
-socket.on("connect_error", (err) => {
-  console.error("Socket connection error:", err.message);
-  addLog(`⚠️ Connection error: ${err.message}`);
-});
+socket.on(
+  "session-expired",
+  () => {
+
+    roomId = null;
+
+    history.replaceState(
+      {},
+      "",
+      window.location.pathname
+    );
+
+    addLog(
+      "⚠️ Previous game no longer exists."
+    );
+
+  }
+);
 
 // ── HTML ──────────────────────────────────────────────────────────────────────
 document.querySelector('#app').innerHTML = `
@@ -208,30 +240,141 @@ document.getElementById('copyRoomBtn').addEventListener('click', () => {
 });
 
 // ── Player role ───────────────────────────────────────────────────────────────
-socket.on("player-role", (role) => {
-  gameState.myRole = role;
-  addLog(`✅ You are ${role}`);
+socket.on("player-role", (data) => {
+  const p1Btn =
+    document.getElementById(
+      "betBtnPlayer1"
+    );
+
+  const p2Btn =
+    document.getElementById(
+      "betBtnPlayer2"
+    );
+
+  if (p1Btn) {
+    p1Btn.disabled = false;
+  }
+
+  if (p2Btn) {
+    p2Btn.disabled = false;
+  }
+
+  gameState.myRole = data.role;
+  reconnectResolved = true;
+
+  if (data.roomId) {
+
+    roomId = data.roomId;
+    const roomLabel =
+      document.querySelector(
+        ".room-info strong"
+      );
+
+    if (roomLabel) {
+      roomLabel.textContent =
+        roomId;
+    }
+
+    history.replaceState(
+      {},
+      "",
+      `?room=${roomId}`
+    );
+
+    console.log(
+      "ROOM RESTORED:",
+      roomId
+    );
+  }
+
+  addLog(`✅ You are ${data.role}`);
+
   updateDisplay();
 
-  if (role === "player1") {
-    const btn = document.querySelector("#betBtnPlayer2");
-    if (btn) { btn.disabled = true; btn.title = "You can only bet as Player 1"; }
-    const loanBtn = document.querySelector("#loanBtnP2");
-    if (loanBtn) { loanBtn.disabled = true; }
-  } else if (role === "player2") {
-    const btn = document.querySelector("#betBtnPlayer1");
-    if (btn) { btn.disabled = true; btn.title = "You can only bet as Player 2"; }
-    const loanBtn = document.querySelector("#loanBtnP1");
-    if (loanBtn) { loanBtn.disabled = true; }
+  if (data.role === "player1") {
+
+    const btn =
+      document.querySelector(
+        "#betBtnPlayer2"
+      );
+
+    if (btn) {
+      btn.disabled = true;
+      btn.title =
+        "You can only bet as Player 1";
+    }
+
+    const loanBtn =
+      document.querySelector(
+        "#loanBtnP2"
+      );
+
+    if (loanBtn) {
+      loanBtn.disabled = true;
+    }
+
+  } else if (
+    data.role === "player2"
+  ) {
+
+    const btn =
+      document.querySelector(
+        "#betBtnPlayer1"
+      );
+
+    if (btn) {
+      btn.disabled = true;
+      btn.title =
+        "You can only bet as Player 2";
+    }
+
+    const loanBtn =
+      document.querySelector(
+        "#loanBtnP1"
+      );
+
+    if (loanBtn) {
+      loanBtn.disabled = true;
+    }
   }
 
   console.log(
-    "PLAYER ROLE EVENT:",
-    role
+    "P1 disabled:",
+    document.getElementById("betBtnPlayer1")?.disabled
   );
 
-  const myRoleEl = document.getElementById("myRoleDisplay");
-  if (myRoleEl) myRoleEl.textContent = `You are: ${role}`;
+  console.log(
+    "P2 disabled:",
+    document.getElementById("betBtnPlayer2")?.disabled
+  );
+
+  console.log(
+    "PLAYER ROLE EVENT:",
+    data
+  );
+
+  console.log(
+    "RESTORED ROLE:",
+    gameState.myRole
+  );
+
+  console.log(
+    "RESTORED ROOM:",
+    roomId
+  );
+
+
+  const myRoleEl =
+    document.getElementById(
+      "myRoleDisplay"
+    );
+
+  if (myRoleEl) {
+
+    myRoleEl.textContent =
+      `You are: ${data.role}`;
+  }
+
 });
 
 // ── Bank Tax ────────
@@ -247,6 +390,8 @@ socket.on("bank-tax", data => {
   updateDisplay();
 });
 
+
+
 // ── Roll button ───────────────────────────────────────────────────────────────
 document.getElementById('rollBtn').addEventListener('click', () => {
   if (!gameState.myRole) {
@@ -256,6 +401,14 @@ document.getElementById('rollBtn').addEventListener('click', () => {
 
   if (gameState.myRole !== gameState.roller) {
     addLog(`⛔ Not your turn. You are ${gameState.myRole}, current turn: ${gameState.roller}`);
+    return;
+  }
+  if (!roomId) {
+
+    addLog(
+      "⚠️ Room not restored yet"
+    );
+
     return;
   }
 
@@ -325,6 +478,20 @@ socket.on("loan-granted", ({ message }) => {
 
 // ── Game state sync ───────────────────────────────────────────────────────────
 socket.on("game-state", (state) => {
+  console.log(
+    "GAME STATE RECEIVED",
+    state
+  );
+
+  console.log(
+    "CURRENT ROLE",
+    gameState.myRole
+  );
+
+  console.log(
+    "CURRENT ROOM",
+    roomId
+  );
   gameState.pot = state.pot;
   gameState.point = state.point;
   gameState.roller = state.currentTurn;
@@ -384,15 +551,34 @@ function placeBetAction(player, amount) {
     addLog("⚠️ You can only bet for your own player");
     return;
   }
-  console.log(
-    "BET ROOM:",
-    roomId
-  );
 
+  console.log("========== BET CLICK ==========");
+  console.log("SOCKET:", socket.id);
+  console.log("CONNECTED:", socket.connected);
+  console.log("ROOM:", roomId);
+  console.log("ROLE:", gameState.myRole);
+  console.log("PLAYER ARG:", player);
+  console.log("BUTTON DISABLED:", event?.target?.disabled);
+
+  if (!roomId) {
+
+    addLog(
+      "⚠️ Room not restored yet"
+    );
+
+    return;
+  }
   console.log(
-    "MY ROLE:",
-    gameState.myRole
+    "EMITTING BET",
+    {
+      socket: socket.id,
+      roomId,
+      amount,
+      player: gameState.myRole
+    }
   );
+  console.log("ACTIVE SOCKET:", socket.id);
+  console.log("CONNECTED:", socket.connected);
   socket.emit("place-bet", { roomId, amount, player: gameState.myRole });
 }
 
@@ -417,7 +603,6 @@ function requestLoanAction(player, amount) {
 }
 
 window.requestLoan = requestLoanAction;
-
-window.addEventListener("beforeunload", () => {
-  socket.disconnect();
-});
+//window.addEventListener("beforeunload", () => {
+//socket.disconnect();
+//)};
