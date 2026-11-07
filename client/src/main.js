@@ -161,11 +161,11 @@ socket.on(
 // ── HTML ──────────────────────────────────────────────────────────────────────
 document.querySelector('#app').innerHTML = `
   <header>
-    <h1 id="statusMsg">🎲 Keyz Dice Game 🎲</h1>
+    <h1 id="statusMsg">🎲 Vanilla Keyz Dice Game Beta v0.2 🎲</h1>
     <p id="turnIndicator" class="turn-indicator">⏳ Waiting for role...</p>
     <p id="myRoleDisplay" class="my-role"></p>
     <p class="room-info">
-      Room: <strong>${roomId}</strong>
+      Room: <strong>${roomId || "Waiting..."}</strong>
       <button id="copyRoomBtn" class="btn-copy">📋 Copy Link</button>
     </p>
   </header>
@@ -186,8 +186,8 @@ document.querySelector('#app').innerHTML = `
 
       <section class="card" id="bankSection">
         <h2>🏦 Central Bank</h2>
-        <p id="loanPool">Loan Pool: R500</p>
-        <p id="potDisplay">Pot: R0</p>
+        <p id="loanPool">Loan Pool: 500 coins</p>
+        <p id="potDisplay">Pot: 0 coins</p>
         <div class="input-row">
           <input type="number" id="loanAmount" min="20" max="500" value="20" />
           <button class="btn-secondary" id="loanBtnP1">P1 Loan</button>
@@ -204,7 +204,7 @@ document.querySelector('#app').innerHTML = `
 
         <div class="player-bet">
           <h3>Player 1</h3>
-          <p id="bankBalanceP1">Balance: R1000</p>
+          <p id="bankBalanceP1">Balance: 1000 coins</p>
           <div class="input-row">
             <input type="number" id="betAmount1" min="20" value="20" />
             <button class="btn-primary" id="betBtnPlayer1">Bet</button>
@@ -213,7 +213,7 @@ document.querySelector('#app').innerHTML = `
 
         <div class="player-bet">
           <h3>Player 2</h3>
-          <p id="bankBalanceP2">Balance: R1000</p>
+          <p id="bankBalanceP2">Balance: 1000 coins</p>
           <div class="input-row">
             <input type="number" id="betAmount2" min="20" value="20" />
             <button class="btn-primary" id="betBtnPlayer2">Bet</button>
@@ -229,7 +229,7 @@ document.querySelector('#app').innerHTML = `
     </div>
   </div>
 
-  <footer>🎲 Skelm Keyz — Just doing my thing! @2026 Design By Skelm Keyz 🎲</footer>
+  <footer>🎲 Vanilla Keyz Dice Game Beta v0.2 | © 2026 Skelm Keyz | Multiplayer Realtime Dice Betting 🎲 </footer>
 `;
 
 // ── Copy room link ────────────────────────────────────────────────────────────
