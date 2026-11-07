@@ -570,7 +570,7 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
 
             const betAmount = Number(amount);
             if (!isValidAmount(betAmount)) {
-                socket.emit("error", `Bet must be between R${MIN_BET} and R${MAX_BET}`);
+                socket.emit("error", `Bet must be between ${MIN_BET} coins and ${MAX_BET} coins`);
                 return;
             }
 
@@ -632,7 +632,7 @@ module.exports = (io, rooms, createRoom, getRoom, broadcastGameState) => {
 
             const loanAmount = Number(amount);
             if (!Number.isFinite(loanAmount) || loanAmount <= 0 || loanAmount > 500) {
-                socket.emit("error", "Loan amount must be between R1 and R500");
+                socket.emit("error", "Loan amount must be between 1 coins and 500 coins");
                 return;
             }
 

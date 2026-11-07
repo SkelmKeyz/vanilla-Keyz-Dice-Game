@@ -186,7 +186,7 @@ document.querySelector('#app').innerHTML = `
 
       <section class="card" id="bankSection">
         <h2>🏦 Central Bank</h2>
-        <p id="loanPool">Loan Pool: 500 coins</p>
+        <p id="loanPool">Loan Pool: 0 coins</p>
         <p id="potDisplay">Pot: 0 coins</p>
         <div class="input-row">
           <input type="number" id="loanAmount" min="20" max="500" value="20" />
@@ -450,8 +450,8 @@ socket.on("dice-result", ({ d1, d2, sum, roller, nextTurn, message }) => {
 socket.on("round-winner", ({ winner, loser, payout, balances, bankMessage, nextAction }) => {
   const isMyWin = winner === gameState.myRole;
   const resultMsg = isMyWin
-    ? `🏆 You won R${payout}!`
-    : `💀 You lost. ${winner} wins R${payout}.`;
+    ? `🏆 You won ${payout} coins!`
+    : `💀 You lost. ${winner} wins ${payout} coins.`;
 
   setStatus(resultMsg);
   addLog(resultMsg);
@@ -540,7 +540,7 @@ socket.on("player-disconnected", ({ message }) => {
 function placeBetAction(player, amount) {
   amount = Number(amount);
   if (isNaN(amount) || amount < 20) {
-    addLog("⚠️ Minimum bet is R20");
+    addLog("⚠️ Minimum bet is 20 coins");
     return;
   }
   if (!gameState.myRole) {
@@ -596,7 +596,7 @@ function requestLoanAction(player, amount) {
   }
   amount = Number(amount);
   if (isNaN(amount) || amount < 20) {
-    addLog("⚠️ Minimum loan is R20");
+    addLog("⚠️ Minimum loan is 20 coins");
     return;
   }
   socket.emit("request-loan", { roomId, amount });

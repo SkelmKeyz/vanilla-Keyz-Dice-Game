@@ -22,10 +22,10 @@ export function updateDisplay() {
     turnIndicator.style.color = isMyTurn ? "#00b894" : "#636e72";
   }
 
-  el("potDisplay").textContent = `Pot: R${gameState.pot} Credits`;
-  el("bankBalanceP1").textContent = `Player 1 balance: R${gameState.bank.balances.player1} Credits`;
-  el("bankBalanceP2").textContent = `Player 2 balance: R${gameState.bank.balances.player2} Credits`;
-  el("loanPool").textContent = `Loan Pool: R${gameState.bank.loanPool} Credits`;
+  el("potDisplay").textContent = `Pot: ${gameState.pot} coins`;
+  el("bankBalanceP1").textContent = `Player 1 balance: ${gameState.bank.balances.player1} coins`;
+  el("bankBalanceP2").textContent = `Player 2 balance: ${gameState.bank.balances.player2} coins`;
+  el("loanPool").textContent = `Loan Pool: ${gameState.bank.loanPool} Coins`;
 
   const pd = el("pointDisplay");
   if (pd) pd.textContent = gameState.point ? `📌 Point: ${gameState.point}` : "";

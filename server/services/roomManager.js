@@ -30,7 +30,7 @@ function createRoom(roomId) {
                 player2: 0
             },
             bank: {
-                loanPool: 500,
+                loanPool: 0,
                 balances: {
                     player1: 1000,
                     player2: 1000

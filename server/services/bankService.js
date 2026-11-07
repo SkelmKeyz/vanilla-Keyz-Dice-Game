@@ -45,7 +45,7 @@ function applyBankRules(room, winnerRole) {
 
         taxResult = {
             taxed: true,
-            message: `🏦 Streak Tax: -R${fee.toFixed(2)} from ${winnerRole}`,
+            message: `🏦 Streak Tax: -${fee.toFixed(2)} from ${winnerRole}`,
             rollerTransfer: false
         };
 
@@ -64,7 +64,7 @@ function applyBankRules(room, winnerRole) {
 
             taxResult = {
                 taxed: true,
-                message: `🔄 Buyback paid by ${winnerRole}: -R${BUYBACK_FEE}`,
+                message: `🔄 Buyback paid by ${winnerRole}: -${BUYBACK_FEE}`,
                 rollerTransfer: false
             };
 
@@ -105,7 +105,7 @@ function requestLoan(room, player, amount) {
     room.bank.balances[player] += loanAmount;
     room.bank.loansIssued[player] += loanAmount;
 
-    return { success: true, message: `💳 ${player} borrowed R${loanAmount}` };
+    return { success: true, message: `💳 ${player} borrowed ${loanAmount}` };
 }
 
 module.exports = {
